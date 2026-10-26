@@ -1556,9 +1556,152 @@ function buildScene(){
     const hits = (x,z,r) => x < -13.7 || x > 9.7 || z < -7.7 || z > 7.7 || colliders.some(([a,b,c,d]) => x > a-r && x < c+r && z > b-r && z < d+r);
     // on the street: buildings, landmarks and the Thames (except over Westminster Bridge) block the way
     const onBridge = (x,z) => z > 954 && z < 976 && x < bankX(965)+266;
-    const hitsCity = (x,z,r) => Math.abs(x) > 1500 || z < -800 || z > 1600
+    const hitsStatic = (x,z,r) => Math.abs(x) > 1500 || z < -800 || z > 1600
       || (x > bankX(z)-6-r && x < bankX(z)+262+r && !onBridge(x,z))
       || cityCol.some(([a,b,c,d]) => x > a-r && x < c+r && z > b-r && z < d+r);
+
+    /* ---- street life: cars, black cabs and buses driving on the left, people on the pavements ---- */
+    // Everything is pooled around Tommy (within LIFE_R metres) and recycled out of sight as he moves.
+    const LIFE_R = 220, life = (() => {
+      const cars = [], peds = [], wheelGeo = new THREE.CylinderGeometry(.36,.36,.24,14); wheelGeo.rotateZ(Math.PI/2);
+      const tyre = std(0x16171a,{roughness:.9}), glassD = std(0x1c2530,{metalness:.5,roughness:.15}), chrome = std(0xcfd3d8,{metalness:.9,roughness:.2});
+      const lampF = new THREE.MeshBasicMaterial({color:0xfff6dc}), lampR = new THREE.MeshBasicMaterial({color:0xb3120c});
+      const paints = [0xe9e9ea,0x1f2124,0x8c929a,0x2a4a7a,0x7a1c22,0x2f5a3c,0xc9c2b0,0x0f2f55,0xa8b0b8,0x5b3a29].map(c => std(c,{metalness:.55,roughness:.3}));
+      const wheels = (g, xs, zs, r=1) => { for (const x of xs) for (const z of zs){ const w = new THREE.Mesh(wheelGeo, tyre); w.position.set(x,.36*r,z); w.scale.setScalar(r); g.add(w); } };
+      function car(){
+        const g = new THREE.Group(), paint = paints[Math.floor(rand()*paints.length)];
+        box(1.8,.7,4.3,paint,0,.68,0,g); box(1.62,.6,2.2,paint,0,1.32,-.25,g);
+        box(1.66,.48,2.0,glassD,0,1.32,-.25,g); box(1.5,.08,2.0,paint,0,1.64,-.25,g);
+        for (const x of [-.6,.6]){ box(.34,.14,.05,lampF,x,.82,2.16,g); box(.34,.14,.05,lampR,x,.82,-2.16,g); }
+        box(1.84,.16,.12,chrome,0,.5,2.16,g); box(1.84,.16,.12,chrome,0,.5,-2.16,g);
+        wheels(g,[-.82,.82],[-1.35,1.35]); return {g, len:4.3, speed:11 + rand()*4};
+      }
+      const cabBlack = std(0x0b0c0f,{metalness:.6,roughness:.25}), taxiSign = new THREE.MeshBasicMaterial({color:0xffc22e});
+      function cab(){
+        const g = new THREE.Group();
+        box(1.85,.78,4.6,cabBlack,0,.72,0,g); box(1.7,.82,2.6,cabBlack,0,1.5,-.35,g); box(1.74,.6,2.4,glassD,0,1.5,-.35,g);
+        box(1.6,.62,.06,glassD,0,1.42,1.0,g); box(1.3,.36,.06,chrome,0,.78,2.31,g);
+        box(.5,.2,.25,taxiSign,0,2.02,.6,g);
+        for (const x of [-.65,.65]){ const l = new THREE.Mesh(new THREE.CircleGeometry(.14,12), lampF); l.position.set(x,.95,2.31); g.add(l); box(.3,.14,.05,lampR,x,.86,-2.31,g); }
+        wheels(g,[-.84,.84],[-1.5,1.5]); return {g, len:4.6, speed:12 + rand()*3};
+      }
+      const busRed = std(0xc8161d,{roughness:.4,metalness:.15}), busDark = std(0x14181e,{metalness:.4,roughness:.2}), busCream = std(0xe9e2cf);
+      const blindTex = srgb(canvasTex(256,48,(g,w,h)=>{ g.fillStyle='#0a0a0a'; g.fillRect(0,0,w,h); g.fillStyle='#ffb21e'; g.font='700 28px Arial,sans-serif'; g.fillText('11',10,34); g.font='600 22px Arial,sans-serif'; g.fillText('Westminster',58,33); }));
+      const blind = new THREE.MeshBasicMaterial({map:blindTex});
+      function bus(){
+        // a red double-decker: two decks of tinted glass, a cream band, the route blind over the windscreen
+        const g = new THREE.Group();
+        box(2.52,4.1,10.6,busRed,0,2.33,0,g); box(2.4,.12,10.4,busCream,0,4.42,0,g);
+        box(2.56,.95,8.8,busDark,0,1.85,-.4,g); box(2.56,1.0,10.0,busDark,0,3.55,0,g);
+        box(2.3,1.3,.06,busDark,0,1.75,5.31,g); box(2.3,.95,.06,busDark,0,3.55,5.31,g);
+        const b = new THREE.Mesh(new THREE.PlaneGeometry(1.9,.36), blind); b.position.set(0,2.72,5.32); g.add(b);
+        for (const x of [-.85,.85]){ box(.3,.18,.05,lampF,x,.7,5.31,g); box(.3,.22,.05,lampR,x,.8,-5.31,g); }
+        wheels(g,[-1.08,1.08],[-3.4,3.6],1.4); return {g, len:10.6, speed:8.5 + rand()*1.5, bus:true};
+      }
+      // people: legs and arms hang from pivots so they can swing
+      const skins = [0xf1c9a5,0xe0ac80,0xc68a5c,0x8d5a3b,0x5a3825,0xf5d6bd].map(c => std(c,{roughness:.7}));
+      const tops = [0x1d2a44,0x6b1f24,0x2e3a2c,0xd9d4c7,0x3b3f46,0x8a6a3c,0x1a1a1c,0x4a6fa5,0xb04a2a,0x7d7f86].map(c => std(c,{roughness:.9}));
+      const bottoms = [0x1b1d22,0x2a3550,0x4b4b50,0x6b5a44,0x22262e].map(c => std(c,{roughness:.9}));
+      const hairs = [0x1a120c,0x3b2414,0x6a4a2a,0xb59a62,0x8a8a8a,0x0c0c0c].map(c => std(c,{roughness:1}));
+      const shoeM = std(0x111214,{roughness:.6});
+      const limbGeo = new THREE.BoxGeometry(.15,.82,.17); limbGeo.translate(0,-.41,0);
+      const armGeo = new THREE.BoxGeometry(.11,.66,.12); armGeo.translate(0,-.33,0);
+      const pick = a => a[Math.floor(rand()*a.length)];
+      function person(){
+        const g = new THREE.Group(), s = .92 + rand()*.16, skin = pick(skins), top = pick(tops), bot = pick(bottoms);
+        const legs = [-.1,.1].map(x => { const p = new THREE.Group(); p.position.set(x,.88,0); p.add(new THREE.Mesh(limbGeo, bot)); const sh = box(.16,.1,.26,shoeM,0,-.84,.04,p); g.add(p); return p; });
+        box(.42,.6,.24,top,0,1.2,0,g);
+        const arms = [-.27,.27].map(x => { const p = new THREE.Group(); p.position.set(x,1.47,0); p.add(new THREE.Mesh(armGeo, top)); box(.1,.11,.1,skin,0,-.7,0,p); g.add(p); return p; });
+        box(.12,.1,.12,skin,0,1.55,0,g); box(.22,.26,.24,skin,0,1.73,0,g);
+        const hair = box(.24,.1,.26,pick(hairs),0,1.88,-.01,g); if (rand() < .4) box(.24,.22,.06,hair.material,0,1.77,-.13,g);
+        if (rand() < .25) box(.3,.38,.12,pick(tops),0,1.2,-.18,g);                                   // a backpack
+        g.scale.setScalar(s); return {g, legs, arms, speed:1.15 + rand()*.45, phase:rand()*6};
+      }
+      // roads joined end to end make the network; a dead end means a U-turn
+      const links = roads.map((r,i) => { const out = [[],[]];
+        roads.forEach((o,j) => { if (j === i) return;
+          for (const [e,ex,ez] of [[0,r.x1,r.z1],[1,r.x2,r.z2]]){
+            if (Math.hypot(o.x1-ex,o.z1-ez) < 12) out[e].push([j,1]);
+            if (Math.hypot(o.x2-ex,o.z2-ez) < 12) out[e].push([j,-1]); } });
+        return out; });
+      const near = (cx,cz,R,main) => { const out = new Set();
+        for (let i=Math.floor((cx-R)/BK); i<=Math.floor((cx+R)/BK); i++) for (let j=Math.floor((cz-R)/BK); j<=Math.floor((cz+R)/BK); j++)
+          for (const ri of buckets.get(i*10007+j) || []) if (!main || roads[ri].w >= 14) out.add(ri);
+        return [...out]; };
+      // where an agent on road ri, travelling dir, s metres along, with a sideways offset, stands
+      const at = (a, out) => { const r = roads[a.ri], ux = (r.x2-r.x1)/r.len, uz = (r.z2-r.z1)/r.len, d = a.dir;
+        // the left-hand side of the direction of travel is (uz,-ux)*d
+        out.x = r.x1 + ux*a.s + uz*d*a.off; out.z = r.z1 + uz*a.s - ux*d*a.off; out.yaw = Math.atan2(ux*d, uz*d); return out; };
+      const tmp = {x:0,z:0,yaw:0};
+      const offFor = (a, r) => a.kind === 'ped' ? (r.w/2 + 2.6)*(a.side || 1) : a.bus || r.w < 14 ? r.w/4 : r.w/4 + (a.lane ? r.w/8 : -r.w/8)*.9;
+      function spawn(a, cx, cz, rMin, rMax){
+        for (let tries=0; tries<30; tries++){
+          const cand = near(cx, cz, rMax, a.bus); if (!cand.length) return false;
+          a.ri = cand[Math.floor(rand()*cand.length)]; const r = roads[a.ri];
+          a.dir = rand() < .5 ? 1 : -1; a.s = rand()*r.len; a.lane = rand() < .5; a.side = rand() < .5 ? 1 : -1; a.off = offFor(a, r);
+          at(a, tmp); const d = Math.hypot(tmp.x-cx, tmp.z-cz);
+          if (d < rMin || d > rMax) continue;
+          if (a.kind === 'ped' ? hitsStatic(tmp.x,tmp.z,.4) : (tmp.x > bankX(tmp.z)-4 && !onBridge(tmp.x,tmp.z))) continue;
+          a.g.position.set(tmp.x, a.kind === 'ped' ? 0 : .1, tmp.z); a.g.rotation.y = tmp.yaw; a.wait = 0; a.v = a.speed; return true;
+        }
+        return false;
+      }
+      // at the end of a road: carry on along a joining road, else turn round
+      function nextRoad(a){
+        const r = roads[a.ri], end = a.dir > 0 ? 1 : 0, opts = links[a.ri][end].filter(([j]) => !a.bus || roads[j].w >= 14);
+        if (opts.length && rand() < .92){ const [j,dir] = opts[Math.floor(rand()*opts.length)]; a.ri = j; a.dir = dir; a.s = dir > 0 ? 0 : roads[j].len; }
+        else { a.dir = -a.dir; a.s = a.dir > 0 ? 0 : r.len; }
+        a.off = offFor(a, roads[a.ri]);
+      }
+      const holder = new THREE.Group(); fsc.add(holder);
+      const mixes = [car,car,car,car,cab,cab,bus];
+      for (let i=0;i<64;i++){ const m = mixes[i % mixes.length](); m.kind = 'car'; cars.push(m); holder.add(m.g); }
+      for (let i=0;i<120;i++){ const m = person(); m.kind = 'ped'; peds.push(m); holder.add(m.g); }
+      let ready = false;
+      const turnTo = (g, yaw, k) => { let d = yaw - g.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d)); g.rotation.y += d*k; };
+      return {
+        update(dt, cx, cz, tx, tz){
+          if (!ready){ ready = true; for (const a of [...cars, ...peds]) a.g.visible = spawn(a, cx, cz, 0, LIFE_R); }
+          for (const a of cars){
+            if (!a.g.visible || Math.hypot(a.g.position.x-cx, a.g.position.z-cz) > LIFE_R + 40){ a.g.visible = spawn(a, cx, cz, LIFE_R*.55, LIFE_R); continue; }
+            // brake for Tommy, people crossing and anything just ahead; give up waiting after a while (gridlock breaker)
+            const yaw = a.g.rotation.y, fx = Math.sin(yaw), fz = Math.cos(yaw), look = a.len/2 + 3 + a.v*.6;
+            const ahead = (x,z,wide) => { const dx = x-a.g.position.x, dz = z-a.g.position.z, f = dx*fx + dz*fz; return f > 0 && f < look && Math.abs(dx*fz - dz*fx) < wide; };
+            let stop = ahead(tx,tz,1.6) || (a.wait < 4 && cars.some(o => o !== a && o.g.visible && ahead(o.g.position.x, o.g.position.z, 1.5)));
+            a.wait = stop ? a.wait + dt : 0;
+            a.v += ((stop ? 0 : a.speed) - a.v)*Math.min(1, dt*(stop ? 4 : 1.2));
+            a.s += a.v*dt*a.dir;
+            if (a.s < 0 || a.s > roads[a.ri].len) nextRoad(a);
+            at(a, tmp);
+            // ease into the new lane and heading so turns look like turns
+            const k = Math.min(1, dt*5); a.g.position.x += (tmp.x - a.g.position.x)*k; a.g.position.z += (tmp.z - a.g.position.z)*k;
+            turnTo(a.g, tmp.yaw, Math.min(1, dt*4));
+          }
+          for (const a of peds){
+            if (!a.g.visible || Math.hypot(a.g.position.x-cx, a.g.position.z-cz) > LIFE_R*.7){ a.g.visible = spawn(a, cx, cz, LIFE_R*.35, LIFE_R*.65); continue; }
+            // step round Tommy: pause when he's right in the way
+            const dT = Math.hypot(tx-a.g.position.x, tz-a.g.position.z), yaw = a.g.rotation.y;
+            const blocked = dT < 1.3 && (tx-a.g.position.x)*Math.sin(yaw) + (tz-a.g.position.z)*Math.cos(yaw) > 0;
+            const v = blocked ? 0 : a.speed;
+            a.s += v*dt*a.dir;
+            if (a.s < 0 || a.s > roads[a.ri].len) nextRoad(a);
+            at(a, tmp);
+            if (hitsStatic(tmp.x, tmp.z, .3)){ a.dir = -a.dir; a.s += a.dir*v*dt*2; at(a, tmp); }
+            const k = Math.min(1, dt*4); a.g.position.x += (tmp.x - a.g.position.x)*k; a.g.position.z += (tmp.z - a.g.position.z)*k;
+            turnTo(a.g, tmp.yaw, Math.min(1, dt*6));
+            a.phase += dt*v*4.2; const sw = Math.sin(a.phase)*(v ? .5 : 0);
+            a.legs[0].rotation.x = sw; a.legs[1].rotation.x = -sw; a.arms[0].rotation.x = -sw*.8; a.arms[1].rotation.x = sw*.8;
+          }
+        },
+        // Tommy can't walk through cars or people
+        blocks(x,z,r){
+          for (const a of cars){ if (!a.g.visible) continue; const dx = x-a.g.position.x, dz = z-a.g.position.z, yaw = a.g.rotation.y, c = Math.cos(yaw), s = Math.sin(yaw);
+            if (Math.abs(dx*c - dz*s) < (a.bus ? 1.3 : .95) + r && Math.abs(dx*s + dz*c) < a.len/2 + r) return true; }
+          return peds.some(a => a.g.visible && Math.hypot(x-a.g.position.x, z-a.g.position.z) < .3 + r);
+        },
+      };
+    })();
+    const hitsCity = (x,z,r) => hitsStatic(x,z,r) || life.blocks(x,z,r);
     const ZERO = new THREE.Vector3();
     let level = 'top';
     // on the street the shadow sits above the highest road layer so it never fights with the tarmac
@@ -1598,6 +1741,9 @@ function buildScene(){
         const k = input.keys;
         // the Thames drifts downstream with a slow ripple over it
         waterTex.offset.set(t*.0025, t*.008); ripple.offset.set(-t*.018, t*.011);
+        // street life runs round wherever Tommy is, so it's busy below the penthouse too
+        { const sx = level === 'street' ? P.x : P0.x + P.x, sz = level === 'street' ? P.z : P0.z + P.z;
+          life.update(Math.min(dt, .1), sx, sz, level === 'street' ? P.x : 1e5, level === 'street' ? P.z : 1e5); }
         // through the eyepiece, Tommy and the telescope itself would only block the view
         tele.visible = tommy.root.visible = state !== 'scope';
         if (state === 'wake'){
