@@ -24,8 +24,20 @@ A game starring Tommy (no last name), set in Westminster, London.
 ## What exists so far
 
 - `tommy-night-run.html`: the 3D main menu (no gameplay yet), built with three.js r128 from cdnjs. It's also published as a private Claude artifact: https://claude.ai/artifact/BZAnqDAhc9cMxuwnSb9tJx. Republish from this file to update that link.
-  - The visuals are a toon-shaded 3D Tommy on the Embankment, with Big Ben (showing real London time), Parliament, the London Eye and Westminster Bridge traffic.
+  - The visuals are a toon-shaded 3D Tommy on the Embankment, with Big Ben (showing real London time), Parliament, the London Eye and Westminster Bridge traffic, under the real London sky (see below).
   - The menu is styled like an open-world crime game (GTA-like), without using any real game's names, logos or fonts.
+  - **The menu follows the real London sky.** It's no longer night-only.
+    - **Time of day:** `sunPosition()` computes the sun over Westminster. The phase is set by sun elevation: day ≥ 6°; dawn or dusk from −4° to 6°, by azimuth (morning or evening); twilight from −12° to −4°; night below −12°.
+    - **Weather:** `fetchWeather()` reads live London weather from Open-Meteo (no key; credited in Credits, CC BY 4.0) every 15 minutes, mapped by WMO code in `weatherOf()`. If the fetch fails, the sky still follows the sun.
+    - **Scene:** `atmosphere()`/`stepAtm()` in `buildScene` ease between five `PRESET` looks, then apply the weather on top:
+      - cloud cover greys the sky and dims the sun;
+      - fog thickens the air;
+      - rain falls as streaks and makes the paving wet and glossy;
+      - snow falls as flakes;
+      - storms add lightning flashes.
+      - The menu scene looks west across the river (north is +x), so the real sun sets behind Parliament.
+    - **UI:** `body.phase-*` shifts the purple accent (`--accent`, `--accent-deep`, `--accent-light`). `body.wx-*` adds rain, snow or fog effects, storm flashes and an overcast dullness to the banner.
+      - The HUD shows a weather icon plus "Phase · Weather · °C" under the date.
   - The UI accent is **purple** (`--accent` #A35CF0 / `--accent-deep` #5A27A8, at the user's request). It's used across the menu, subtitles, telescope panel, RUN button and minimap arrow. Tommy's shirt stays blue.
 - **Story Mode** (just "Story Mode", no chapter numbers) opens with the cutscene "The Address". It's in the same file. Prime Minister **Jordan Andreas** (Conservative Party; fictional) speaks outside 10 Downing Street, with press and a police officer.
   - Tommy is **not** at the speech. The cutscene opens in Tommy's flat, where the speech plays live on his TV ("LDN News 24").

@@ -4,7 +4,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=Yellowtail&family=Barlow+Condensed:wght@500;600;700&display=swap">
 <style>
-/* Layout: full-window 3D night scene of Westminster; open-world-crime-game menu stack on the left (logo, banner, rows, description), clock top-right, button prompts bottom-right. Night-only by design. */
+/* Layout: full-window 3D scene of Westminster; open-world-crime-game menu stack on the left (logo, banner, rows, description), clock and live London sky top-right, button prompts bottom-right. The scene and accent follow the real sun and weather over London. */
 :root{
   --ink:#05070F;
   --row:rgba(0,0,0,.62);
@@ -13,6 +13,7 @@
   --muted:#A3ACC0;
   --accent:#A35CF0;
   --accent-deep:#5A27A8;
+  --accent-light:#D2A8FF;
   --gold:#F2C76B;
   --logo:'Bowlby One','Arial Black',Impact,sans-serif;
   --script:'Yellowtail','Brush Script MT',cursive;
@@ -26,7 +27,8 @@ body{background:var(--ink);color:var(--text);font-family:var(--ui);overflow:hidd
 #scene{position:fixed;inset:0;width:100%;height:100%;display:block}
 body.no-gl{background:radial-gradient(120% 80% at 70% 30%,#2a2250 0%,#101634 45%,#05070F 100%)}
 .shade{position:fixed;inset:0;pointer-events:none;
-  background:linear-gradient(90deg,rgba(0,0,0,.6) 0%,rgba(0,0,0,.35) 30%,rgba(0,0,0,0) 52%),
+  background:radial-gradient(38% 32% at 100% 0%,rgba(0,0,0,.42),transparent 75%),
+             linear-gradient(90deg,rgba(0,0,0,.6) 0%,rgba(0,0,0,.35) 30%,rgba(0,0,0,0) 52%),
              radial-gradient(130% 100% at 60% 45%,transparent 55%,rgba(0,0,0,.55) 100%)}
 
 .ui{position:fixed;inset:0;pointer-events:none}
@@ -48,7 +50,7 @@ body.no-gl{background:radial-gradient(120% 80% at 70% 30%,#2a2250 0%,#101634 45%
 
 .menu{display:flex;flex-direction:column;box-shadow:0 20px 40px -20px rgba(0,0,0,.8)}
 .banner{position:relative;height:84px;display:flex;align-items:center;padding:0 22px;overflow:hidden;
-  background:repeating-linear-gradient(-55deg,rgba(255,255,255,.07) 0 2px,transparent 2px 9px),linear-gradient(120deg,var(--accent-deep) 0%,var(--accent) 70%,#D2A8FF 100%)}
+  background:repeating-linear-gradient(-55deg,rgba(255,255,255,.07) 0 2px,transparent 2px 9px),linear-gradient(120deg,var(--accent-deep) 0%,var(--accent) 70%,var(--accent-light) 100%)}
 .banner h2{margin:0;font-family:var(--script);font-weight:400;font-size:46px;line-height:1;color:#fff;text-shadow:2px 3px 0 rgba(0,0,0,.4)}
 .subhead{display:flex;justify-content:space-between;align-items:center;background:#000;padding:7px 14px;
   font-size:15px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--accent)}
@@ -86,6 +88,28 @@ body.no-gl{background:radial-gradient(120% 80% at 70% 30%,#2a2250 0%,#101634 45%
 .hud .time{font-family:var(--logo);font-size:34px;line-height:1;-webkit-text-stroke:2px #000;paint-order:stroke fill;font-variant-numeric:tabular-nums}
 .hud .place{font-family:var(--script);font-size:30px;line-height:1.1;color:var(--gold)}
 .hud .day{font-size:15px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--text)}
+/* daylight, rain and fog skies are bright, so the small HUD text carries its own shadow */
+.hud .day,.hud .wx,.hud .place{text-shadow:0 1px 0 #000,0 0 6px rgba(0,0,0,.85),0 0 14px rgba(0,0,0,.55)}
+.hud .wx{display:flex;align-items:center;justify-content:flex-end;gap:7px;margin-top:4px;font-size:15px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text)}
+.hud .wx svg{width:20px;height:20px;flex:none;fill:none;stroke:var(--gold);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 1px 0 #000)}
+/* the accent shifts with the real time of day over London (night is the default above) */
+body.phase-dawn{--accent:#C46BE0;--accent-deep:#6A2C9A;--accent-light:#FFB8D9}
+body.phase-day{--accent:#A86CFF;--accent-deep:#5F33C2;--accent-light:#E4D2FF}
+body.phase-dusk{--accent:#B455D6;--accent-deep:#5A2280;--accent-light:#FFA27E}
+body.phase-twilight{--accent:#8D6BFF;--accent-deep:#3C2A9C;--accent-light:#B8A6FF}
+/* and the banner shows the real weather: rain, snow, fog, a storm's flashes, an overcast dullness */
+.banner{position:relative;overflow:hidden}
+.banner::after{content:"";position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity 1.2s}
+body.wx-rain .banner::after,body.wx-drizzle .banner::after,body.wx-storm .banner::after{opacity:1;background:repeating-linear-gradient(105deg,transparent 0 13px,rgba(255,255,255,.3) 13px 14px,transparent 14px 29px);background-size:180px 180px;animation:wx-rain .45s linear infinite}
+body.wx-drizzle .banner::after{opacity:.45}
+body.wx-snow .banner::after{opacity:1;background:radial-gradient(circle,rgba(255,255,255,.9) 0 1.6px,transparent 2.2px) 0 0/24px 24px,radial-gradient(circle,rgba(255,255,255,.65) 0 1px,transparent 1.6px) 9px 6px/17px 17px;animation:wx-snow 7s linear infinite}
+body.wx-fog .banner::after{opacity:1;background:linear-gradient(90deg,rgba(255,255,255,.38),rgba(255,255,255,.12) 55%,rgba(255,255,255,.32))}
+body.wx-cloudy .banner,body.wx-fog .banner,body.wx-drizzle .banner,body.wx-rain .banner,body.wx-storm .banner{filter:saturate(.72)}
+body.wx-storm .banner{animation:wx-flash 9s infinite}
+@keyframes wx-rain{to{background-position:-36px 180px}}
+@keyframes wx-snow{to{background-position:24px 144px,-17px 102px}}
+@keyframes wx-flash{0%,93%,100%{filter:saturate(.72)}94%{filter:saturate(.72) brightness(1.9)}95%{filter:saturate(.72)}96.5%{filter:saturate(.72) brightness(1.6)}}
+@media (prefers-reduced-motion:reduce){.banner::after,body.wx-storm .banner{animation:none}}
 
 /* bottom right prompts */
 .prompts{position:absolute;right:max(16px,calc(env(safe-area-inset-right,0px) + 4vw));bottom:calc(env(safe-area-inset-bottom,0px) + 4vh);
@@ -200,6 +224,8 @@ body.in-story .ui,body.in-story .shade{display:none}
   .banner{height:60px}.banner h2{font-size:36px}
   .row{font-size:18px;min-height:38px}
   .hud .place,.hud .day{display:none}
+  .hud .wx{font-size:12px;gap:5px}
+  .hud .wx svg{width:16px;height:16px}
   .hud .time{font-size:24px}
   .prompts{bottom:calc(env(safe-area-inset-bottom,0px) + 16px)}
 }
@@ -228,6 +254,7 @@ body.in-story .ui,body.in-story .shade{display:none}
     <div class="time" id="clock">--:--</div>
     <div class="place">Westminster</div>
     <div class="day" id="day">London</div>
+    <div class="wx" id="wx"><span id="wxIco"></span><span id="wxText"></span></div>
   </div>
 
   <div class="prompts" id="prompts">
@@ -337,9 +364,75 @@ function updateHud(){
 }
 updateHud(); setInterval(updateHud, 5000);
 
+/* ================= the real London sky: time of day and weather ================= */
+// The sun's position over Westminster sets the time of day; the weather comes live from Open-Meteo (free, no key).
+// If the weather can't be fetched (offline, or a page that blocks it), the sky still follows the real sun.
+const SKY = {phase:'night', el:-30, az:0, kind:'clear', wx:null};
+const PHASE_NAMES = {dawn:'Dawn', day:'Day', dusk:'Dusk', twilight:'Twilight', night:'Night'};
+// solar elevation and azimuth (degrees, azimuth clockwise from north) over Westminster
+function sunPosition(date){
+  const rad = Math.PI/180, lat = 51.5007*rad, lon = -0.1246;
+  const d = date.getTime()/86400000 - 10957.5;                     // days since J2000.0
+  const g = (357.529 + .98560028*d)*rad, q = 280.459 + .98564736*d;
+  const L = (q + 1.915*Math.sin(g) + .020*Math.sin(2*g))*rad, e = (23.439 - .00000036*d)*rad;
+  const ra = Math.atan2(Math.cos(e)*Math.sin(L), Math.cos(L)), dec = Math.asin(Math.sin(e)*Math.sin(L));
+  const gmst = 18.697374558 + 24.06570982441908*d, ha = (gmst*15 + lon)*rad - ra;
+  const el = Math.asin(Math.sin(lat)*Math.sin(dec) + Math.cos(lat)*Math.cos(dec)*Math.cos(ha));
+  const az = Math.atan2(-Math.sin(ha), Math.tan(dec)*Math.cos(lat) - Math.sin(lat)*Math.cos(ha));
+  return {el: el/rad, az: (az/rad + 360) % 360};
+}
+// WMO weather codes, as Open-Meteo reports them
+function weatherOf(code){
+  const W = {0:['clear','Clear'],1:['clear','Mainly clear'],2:['partly','Partly cloudy'],3:['cloudy','Overcast'],45:['fog','Fog'],48:['fog','Freezing fog'],
+    51:['drizzle','Light drizzle'],53:['drizzle','Drizzle'],55:['drizzle','Heavy drizzle'],56:['drizzle','Freezing drizzle'],57:['drizzle','Freezing drizzle'],
+    61:['rain','Light rain'],63:['rain','Rain'],65:['rain','Heavy rain'],66:['rain','Freezing rain'],67:['rain','Freezing rain'],
+    71:['snow','Light snow'],73:['snow','Snow'],75:['snow','Heavy snow'],77:['snow','Snow grains'],80:['rain','Light showers'],81:['rain','Showers'],82:['rain','Heavy showers'],
+    85:['snow','Snow showers'],86:['snow','Heavy snow showers'],95:['storm','Thunderstorm'],96:['storm','Thunderstorm, hail'],99:['storm','Thunderstorm, hail']};
+  return W[code] || ['clear',''];
+}
+const WX_ICONS = (() => {
+  const cloud = y => `<path d="M7 ${18-y}h10a4 4 0 0 0 .5-8 6 6 0 0 0-11.5 1.5A3.3 3.3 0 0 0 7 ${18-y}z"/>`;
+  return {
+    sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+    moon:'<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>',
+    partlySun:'<path d="M8 2.5V4M2.5 8H4M4.1 4.1l1 1M11.9 4.1l-1 1"/><path d="M5 10.6A3.5 3.5 0 0 1 11.3 6.4"/>' + cloud(-1),
+    partlyMoon:'<path d="M11 6.2A4.3 4.3 0 1 1 5.3 2.6a3.5 3.5 0 0 0 5.7 3.6z"/>' + cloud(-1),
+    cloudy:cloud(0), fog:'<path d="M4 8h16M2.5 12h19M4 16h16M7 20h10"/>',
+    rain:cloud(4) + '<path d="M9 18l-1 3M13 18l-1 3M17 18l-1 3"/>',
+    drizzle:cloud(4) + '<path d="M9 18.5v1M13 19.5v1M17 18.5v1"/>',
+    snow:cloud(4) + '<path d="M9 19h.01M13 21h.01M17 19h.01M11 22h.01M15 22h.01"/>',
+    storm:cloud(4) + '<path d="M13 14l-3 4h4l-3 4"/>',
+  };
+})();
+function updateSky(){
+  const {el, az} = sunPosition(new Date());
+  const phase = el >= 6 ? 'day' : el >= -4 ? (az < 180 ? 'dawn' : 'dusk') : el >= -12 ? 'twilight' : 'night';
+  const [kind, label] = SKY.wx ? weatherOf(SKY.wx.code) : ['clear', ''];
+  Object.assign(SKY, {el, az, phase, kind});
+  const cl = document.body.classList;
+  [...cl].forEach(c => { if (/^(phase|wx)-/.test(c)) cl.remove(c); });
+  cl.add('phase-' + phase, 'wx-' + kind);
+  const dark = phase === 'night' || phase === 'twilight';
+  const icon = kind === 'clear' ? (dark ? 'moon' : 'sun') : kind === 'partly' ? (dark ? 'partlyMoon' : 'partlySun') : kind;
+  $('wxIco').innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${WX_ICONS[icon]}</svg>`;
+  $('wxText').textContent = [PHASE_NAMES[phase], label, SKY.wx ? Math.round(SKY.wx.temp) + '°C' : ''].filter(Boolean).join(' · ');
+  if (scene3d) scene3d.atmosphere(SKY);
+}
+async function fetchWeather(){
+  try {
+    const r = await fetch('https://api.open-meteo.com/v1/forecast?latitude=51.5007&longitude=-0.1246&current=temperature_2m,weather_code,cloud_cover,precipitation,wind_speed_10m&timezone=Europe%2FLondon');
+    if (!r.ok) throw new Error(r.status);
+    const c = (await r.json()).current;
+    SKY.wx = {code:c.weather_code, temp:c.temperature_2m, cloud:c.cloud_cover, precip:c.precipitation, wind:c.wind_speed_10m};
+  } catch (e) { /* keep the last reading, or none: the sky still follows the sun */ }
+  updateSky();
+}
+
 /* ================= 3D scene ================= */
 let scene3d = null;
 try { scene3d = buildScene(); } catch (e) { console.error(e); document.body.classList.add('no-gl'); }
+updateSky(); setInterval(updateSky, 30000);
+fetchWeather(); setInterval(fetchWeather, 15*60*1000);
 setTimeout(() => $('loading').classList.add('done'), scene3d ? 350 : 0);
 function buildScene(){
   if (!window.THREE) throw new Error('three.js did not load');
@@ -397,24 +490,39 @@ function buildScene(){
   /* ---------- sky ---------- */
   const sky = new THREE.Mesh(new THREE.SphereGeometry(2500,32,16), new THREE.ShaderMaterial({
     side:THREE.BackSide, depthWrite:false, depthTest:false, fog:false,
-    uniforms:{top:{value:new THREE.Color(0x03050f)},mid:{value:new THREE.Color(0x0f1638)},hor:{value:FOG.clone()},glow:{value:new THREE.Color(0x5a3448)}},
+    uniforms:{top:{value:new THREE.Color(0x03050f)},mid:{value:new THREE.Color(0x0f1638)},hor:{value:FOG.clone()},glow:{value:new THREE.Color(0x5a3448)},
+      sunDir:{value:new THREE.Vector3(0,-1,0)},sunCol:{value:new THREE.Color(0xffb070)},sunAmt:{value:0},cloud:{value:0},cloudCol:{value:new THREE.Color(0x1c2034)},time:{value:0},flash:{value:0}},
     vertexShader:'varying vec3 vP;void main(){vP=normalize(position);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
-    fragmentShader:'uniform vec3 top,mid,hor,glow;varying vec3 vP;void main(){float y=vP.y;vec3 c=mix(hor,mid,smoothstep(0.,.18,y));c=mix(c,top,smoothstep(.18,.7,y));c+=glow*exp(-abs(y)*22.)*.55;gl_FragColor=vec4(c,1.);}'
+    fragmentShader:`uniform vec3 top,mid,hor,glow,sunDir,sunCol,cloudCol;uniform float sunAmt,cloud,time,flash;varying vec3 vP;
+      float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+      float n(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h(i),h(i+vec2(1,0)),f.x),mix(h(i+vec2(0,1)),h(i+vec2(1,1)),f.x),f.y);}
+      float fbm(vec2 p){float v=0.,a=.5;for(int i=0;i<5;i++){v+=a*n(p);p*=2.03;a*=.5;}return v;}
+      void main(){float y=vP.y;vec3 c=mix(hor,mid,smoothstep(0.,.18,y));c=mix(c,top,smoothstep(.18,.7,y));c+=glow*exp(-abs(y)*22.)*.55;
+        float s=max(dot(vP,sunDir),0.);
+        c+=sunCol*sunAmt*(pow(s,6.)*.35+pow(s,60.)*.6+smoothstep(.9988,.9994,s)*1.4);
+        if(y>0.&&cloud>.001){vec2 uv=vP.xz/(y+.1)*1.1+vec2(time*.01,time*.004);
+          float cov=smoothstep(1.-cloud*.95,1.25-cloud*.9,fbm(uv))*smoothstep(0.,.12,y);
+          vec3 cc=cloudCol*(.78+.4*fbm(uv*2.1+.3))+sunCol*sunAmt*pow(s,4.)*.5;
+          c=mix(c,cc,cov*min(1.,.45+cloud));}
+        c+=vec3(.8,.85,1.)*flash;gl_FragColor=vec4(c,1.);}`
   }));
   sky.renderOrder = -1; scene.add(sky);   // skies ignore depth, so they must draw before everything else
+  let stars, moon, moonGlow;
   { const n=1400, pos=new Float32Array(n*3);
     for(let i=0;i<n;i++){const th=rand()*Math.PI*2,ph=Math.acos(rand()*.92+.06);pos[i*3]=Math.cos(th)*Math.sin(ph)*2300;pos[i*3+1]=Math.cos(ph)*2300;pos[i*3+2]=Math.sin(th)*Math.sin(ph)*2300;}
     const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(pos,3));
-    scene.add(new THREE.Points(g,new THREE.PointsMaterial({color:0xdfe6ff,size:1.6,sizeAttenuation:false,fog:false,transparent:true,opacity:.75})));
+    scene.add(stars = new THREE.Points(g,new THREE.PointsMaterial({color:0xdfe6ff,size:1.6,sizeAttenuation:false,fog:false,transparent:true,opacity:.75})));
   }
-  const addGlow = (x,y,z,s,color,op=1,fog=true) => { const m=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex,color,transparent:true,opacity:op,blending:THREE.AdditiveBlending,depthWrite:false,fog})); m.position.set(x,y,z); m.scale.set(s,s,1); scene.add(m); return m; };
+  // every artificial glow is kept with its night opacity, so daylight can fade them out
+  const glows = [];
+  const addGlow = (x,y,z,s,color,op=1,fog=true) => { const m=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex,color,transparent:true,opacity:op,blending:THREE.AdditiveBlending,depthWrite:false,fog})); m.position.set(x,y,z); m.scale.set(s,s,1); scene.add(m); glows.push({m,op}); return m; };
   { const moonTex = srgb(canvasTex(128,128,(g)=>{const r=g.createRadialGradient(56,52,4,64,64,60);r.addColorStop(0,'#fffaf0');r.addColorStop(.85,'#e9dfc6');r.addColorStop(1,'rgba(233,223,198,0)');g.fillStyle=r;g.beginPath();g.arc(64,64,60,0,7);g.fill();g.fillStyle='rgba(160,150,130,.25)';[[44,48,9],[78,70,12],[60,88,7],[84,40,6]].forEach(c=>{g.beginPath();g.arc(c[0],c[1],c[2],0,7);g.fill();});}));
-    const moon=new THREE.Sprite(new THREE.SpriteMaterial({map:moonTex,fog:false,transparent:true,depthWrite:false})); moon.position.set(-520,620,-1900); moon.scale.set(90,90,1); scene.add(moon);
-    addGlow(-520,620,-1901,520,0x9fb4ff,.35,false);
+    moon=new THREE.Sprite(new THREE.SpriteMaterial({map:moonTex,fog:false,transparent:true,depthWrite:false})); moon.position.set(-520,620,-1900); moon.scale.set(90,90,1); scene.add(moon);
+    moonGlow = addGlow(-520,620,-1901,520,0x9fb4ff,.35,false); glows.pop();
   }
 
   /* ---------- lights ---------- */
-  scene.add(new THREE.HemisphereLight(0x4a5a9a, 0x15101a, .55));
+  const hemi = new THREE.HemisphereLight(0x4a5a9a, 0x15101a, .55); scene.add(hemi);
   const moonLight = new THREE.DirectionalLight(0x9fb4ff, .45); moonLight.position.set(-3, 6, -8); scene.add(moonLight);
   const lampLight = new THREE.PointLight(0xffd29a, 1.7, 22, 1.6); lampLight.position.set(4.6, 5.0, -3.6); scene.add(lampLight);
   const fillLight = new THREE.PointLight(0xf2f4ff, 1.15, 30, 1.5); fillLight.position.set(-2.5, 3.4, 7); scene.add(fillLight);
@@ -430,7 +538,7 @@ function buildScene(){
   box(220,1.05,.7,stone,0,.525,-3.9);
   box(220,.14,.9,std(0x6b6f80),0,1.1,-3.9);
   const lampMat = std(0x18241e,{roughness:.6,metalness:.4});
-  const lanternMat = new THREE.MeshBasicMaterial({color:0xffe1a0});
+  const lanternMat = new THREE.MeshBasicMaterial({color:0xffe1a0}), lanternOn = new THREE.Color(0xffe1a0).convertSRGBToLinear(), lanternOff = new THREE.Color(0xd8d4c8).convertSRGBToLinear();
   const lampXs = [-43.4,-27.4,-11.4,4.6,20.6,36.6];
   for (const x of lampXs){
     const g = new THREE.Group(); g.position.set(x,1.17,-3.9); scene.add(g);
@@ -465,7 +573,7 @@ function buildScene(){
   /* ---------- far bank: Parliament & Big Ben ---------- */
   const FZ = -300;
   box(2400,2,12,std(0x2a2733),0,-1,FZ-2);
-  const gold = (rx,ry) => std(0xffffff,{map:facade(rx,ry),emissive:0xffffff,emissiveMap:facade(rx,ry),emissiveIntensity:.55,roughness:.9});
+  const goldMats = [], gold = (rx,ry) => { const m = std(0xffffff,{map:facade(rx,ry),emissive:0xffffff,emissiveMap:facade(rx,ry),emissiveIntensity:.55,roughness:.9}); goldMats.push(m); return m; };
   const slate = std(0x252a3e,{emissive:0x2a1c0a,emissiveIntensity:.4});
   // main range
   box(255,24,26,gold(9,1),-128,12,FZ-13);
@@ -553,7 +661,7 @@ function buildScene(){
     const head = new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex,color:0xfff3d0,blending:THREE.AdditiveBlending,transparent:true,depthWrite:false}));
     head.scale.set(3,3,1); scene.add(head);
     const tail = new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex,color:0xff2a1a,blending:THREE.AdditiveBlending,transparent:true,depthWrite:false,opacity:.8}));
-    tail.scale.set(2,2,1); scene.add(tail);
+    tail.scale.set(2,2,1); scene.add(tail); glows.push({m:head,op:1},{m:tail,op:.8});
     const len = mk===bus ? 5.1 : 2.3;
     vehicles.push({g,dir,off,speed:mk===bus?10:14,head,tail,len});
   });
@@ -574,16 +682,123 @@ function buildScene(){
   addStreak(150,-300,40,140,0x7aa6ff,.35);
 
   /* ---------- distant city ---------- */
+  let cityMat, shardMat;
   { const geo = new THREE.BoxGeometry(1,1,1); geo.translate(0,.5,0);
-    const mat = std(0xffffff,{map:cityTex,emissive:0xffffff,emissiveMap:cityTex,emissiveIntensity:.8,roughness:1});
+    const mat = cityMat = std(0xffffff,{map:cityTex,emissive:0xffffff,emissiveMap:cityTex,emissiveIntensity:.8,roughness:1});
     for (let i=0;i<150;i++){
       const w=14+rand()*40, h=18+rand()*(rand()<.15?140:70), x=-1100+rand()*2200, z=-360-rand()*420;
       if (x>-270 && x<40 && z>-420) continue;
       const m=new THREE.Mesh(geo,mat); m.scale.set(w,h,w*(.6+rand()*.6)); m.position.set(x,0,z); scene.add(m);
     }
-    const shard = new THREE.Mesh(new THREE.ConeGeometry(30,320,4), std(0x16203e,{emissive:0x24345e,emissiveIntensity:.6,metalness:.4,roughness:.3}));
+    const shard = new THREE.Mesh(new THREE.ConeGeometry(30,320,4), shardMat = std(0x16203e,{emissive:0x24345e,emissiveIntensity:.6,metalness:.4,roughness:.3}));
     shard.position.set(-430,160,-980); shard.rotation.y=.4; scene.add(shard);
     addGlow(-430,322,-980,40,0xbfe0ff,.6);
+  }
+
+  /* ---------- the real London sky: time of day and weather ---------- */
+  // Five looks keyed to the sun (dawn, day, dusk, twilight, night), then the live weather on top: cloud cover greys
+  // the sky and dims the sun, fog thickens the air, rain wets the paving, snow falls, storms flash. The scene eases
+  // toward each new look over a few seconds. Sky colours are display values; fog and material colours are linear.
+  const PRESET = {
+    night:   {top:0x03050f,mid:0x0f1638,hor:0x1d1a3c,glow:0x5a3448,fog:0x1d1a3c,fogDen:.0017,stars:.75,moon:1,  sunCol:0xffb070,cloudCol:0x1c2034,hemiSky:0x4a5a9a,hemiGround:0x15101a,hemiInt:.55,keyCol:0x9fb4ff,keyInt:.45,lights:1,  facadeEm:.55,cityEm:.8, cityTint:1, pave:1,  water:0x0a1430,eye:0x7aa6ff,exposure:1.15},
+    twilight:{top:0x0a1238,mid:0x1f2c66,hor:0x5a4a7e,glow:0x8a4a6a,fog:0x2a2850,fogDen:.0015,stars:.4, moon:.8, sunCol:0xff8a60,cloudCol:0x3a3658,hemiSky:0x5a6aaa,hemiGround:0x1a1424,hemiInt:.65,keyCol:0x9fb4ff,keyInt:.4, lights:.95,facadeEm:.5, cityEm:.75,cityTint:2, pave:1.4,water:0x121c48,eye:0x7aa6ff,exposure:1.12},
+    dawn:    {top:0x24407e,mid:0x6a78b0,hor:0xf0a488,glow:0xff9a6a,fog:0x9a8aa0,fogDen:.0012,stars:.05,moon:.25,sunCol:0xffa060,cloudCol:0xe8b0a0,hemiSky:0xb0b8e0,hemiGround:0x3a2a2a,hemiInt:.85,keyCol:0xffb07a,keyInt:1,  lights:.35,facadeEm:.2, cityEm:.3, cityTint:6, pave:2.6,water:0x34406a,eye:0xc8d2ea,exposure:1},
+    day:     {top:0x2a68c4,mid:0x6aa0da,hor:0xc4d8ea,glow:0x000000,fog:0xb4c6d8,fogDen:.0009,stars:0,  moon:0,  sunCol:0xfff4e0,cloudCol:0xf4f6f9,hemiSky:0xdfe9ff,hemiGround:0x5a5040,hemiInt:1.05,keyCol:0xfff2dc,keyInt:1.7,lights:0,  facadeEm:.04,cityEm:.04,cityTint:14,pave:4.2,water:0x3a5868,eye:0xeef2f6,exposure:.95},
+    dusk:    {top:0x26347a,mid:0x7a5ea6,hor:0xff9050,glow:0xff6a40,fog:0x9a7080,fogDen:.0013,stars:.12,moon:.35,sunCol:0xff8040,cloudCol:0xe89878,hemiSky:0xb8a0d0,hemiGround:0x3a2228,hemiInt:.8, keyCol:0xff9050,keyInt:1,  lights:.6, facadeEm:.3, cityEm:.45,cityTint:2, pave:2.2,water:0x2a2a58,eye:0xb8c4e8,exposure:1},
+  };
+  const COLS = ['top','mid','hor','glow','fog','sunCol','cloudCol','hemiSky','hemiGround','keyCol','water','eye'];
+  const NUMS = ['fogDen','stars','moon','sunAmt','cloud','hemiInt','keyInt','lights','facadeEm','cityEm','cityTint','pave','exposure','wet','rain','snow','wind'];
+  const mkAtm = () => { const a = {keyDir:new THREE.Vector3(-3,6,-8).normalize(), storm:false}; COLS.forEach(k => a[k] = new THREE.Color()); NUMS.forEach(k => a[k] = 0); return a; };
+  const atmCur = mkAtm(), atmTgt = mkAtm(); let atmReady = false;
+  const greyOf = (c, amt) => { const l = c.r*.3 + c.g*.59 + c.b*.11; c.lerp(new THREE.Color(l,l,l), amt); return c; };
+  // north is +x and west is -z here: the menu looks west across the river at Parliament, as from the South Bank
+  function atmosphere(st){
+    const P = PRESET[st.phase] || PRESET.night, wx = st.wx, T = atmTgt;
+    COLS.forEach(k => T[k].setHex(P[k])); NUMS.forEach(k => T[k] = P[k] ?? 0);
+    const kind = st.kind || 'clear', wet = /rain|drizzle|storm/.test(kind);
+    // the sun: where it really is, fading in from 4° below the horizon
+    const el = st.el*Math.PI/180, az = st.az*Math.PI/180;
+    const sunDir = new THREE.Vector3(Math.cos(el)*Math.cos(az), Math.sin(el), Math.cos(el)*Math.sin(az));
+    T.sunAmt = Math.min(1, Math.max(0, (st.el + 4)/8));
+    if (st.el > -2) T.keyDir.copy(sunDir).setY(Math.max(.08, sunDir.y)).normalize(); else T.keyDir.set(-3,6,-8).normalize();
+    sunU.value.copy(sunDir);
+    // cloud: live cover when known, otherwise a few fair-weather clouds
+    const cover = wx ? wx.cloud/100 : .2;
+    const oc = Math.max(Math.min(1, Math.max(0, (cover - .45)/.55)), wet || kind === 'snow' || kind === 'fog' ? .85 : 0);
+    T.cloud = Math.max(cover, oc);
+    for (const k of ['top','mid','hor','glow','cloudCol','fog']) greyOf(T[k], oc*.7);
+    if (oc > 0){ const dim = 1 - oc*.35; for (const k of ['top','mid','hor']) T[k].multiplyScalar(dim); }
+    T.sunAmt *= 1 - oc*.9; T.stars *= 1 - cover; T.moon *= 1 - oc; T.keyInt *= 1 - oc*.6; T.hemiInt *= 1 - oc*.12;
+    T.fogDen *= 1 + oc*.6;
+    if (kind === 'fog'){ T.fogDen = Math.max(T.fogDen*4, .0045); T.fog.lerp(T.hor, .5); }
+    // rain and snow: how hard from the precipitation rate, slanted by the wind
+    const mm = wx ? wx.precip : 0;
+    T.rain = kind === 'drizzle' ? .3 : kind === 'rain' ? Math.min(1, .45 + mm*.2) : kind === 'storm' ? 1 : 0;
+    T.snow = kind === 'snow' ? Math.min(1, .5 + mm*.3) : 0;
+    T.wet = wet ? 1 : 0; T.wind = wx ? Math.min(.7, wx.wind/45) : .1; T.storm = kind === 'storm';
+    if (kind === 'snow') T.pave *= 1.6;
+    // the fog colour is linear, unlike the sky's
+    T.fog.convertSRGBToLinear(); T.water.convertSRGBToLinear(); T.eye.convertSRGBToLinear();
+    if (!atmReady){ atmReady = true; COLS.forEach(k => atmCur[k].copy(T[k])); NUMS.forEach(k => atmCur[k] = T[k]); atmCur.keyDir.copy(T.keyDir); applyAtm(0); }
+  }
+  const sunU = sky.material.uniforms.sunDir, U = sky.material.uniforms;
+  const paveBase = paving.color.clone(), cityBase = new THREE.Color(1,1,1);
+  // rain: short streaks falling round the camera; snow: drifting flakes
+  const RAIN = 2200, rainPos = new Float32Array(RAIN*6), rainSeed = new Float32Array(RAIN*3);
+  for (let i=0;i<RAIN;i++){ rainSeed[i*3] = -22 + rand()*48; rainSeed[i*3+1] = rand()*22; rainSeed[i*3+2] = -30 + rand()*38; }
+  const rainGeo = new THREE.BufferGeometry(); rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPos,3));
+  const rainLines = new THREE.LineSegments(rainGeo, new THREE.LineBasicMaterial({color:0xb8c4dc, transparent:true, opacity:.4, depthWrite:false}));
+  rainLines.frustumCulled = false; scene.add(rainLines);
+  const FLAKES = 1600, snowPos = new Float32Array(FLAKES*3);
+  for (let i=0;i<FLAKES;i++){ snowPos[i*3] = -22 + rand()*48; snowPos[i*3+1] = rand()*22; snowPos[i*3+2] = -30 + rand()*38; }
+  const snowGeo = new THREE.BufferGeometry(); snowGeo.setAttribute('position', new THREE.BufferAttribute(snowPos,3));
+  const snowPts = new THREE.Points(snowGeo, new THREE.PointsMaterial({map:glowTex, color:0xffffff, size:.16, transparent:true, opacity:.9, depthWrite:false}));
+  snowPts.frustumCulled = false; scene.add(snowPts);
+  let flash = 0, stormT = 3, wetCur = 0;
+  function applyAtm(dt){
+    const A = atmCur;
+    U.top.value.copy(A.top); U.mid.value.copy(A.mid); U.hor.value.copy(A.hor); U.glow.value.copy(A.glow);
+    U.sunCol.value.copy(A.sunCol); U.sunAmt.value = A.sunAmt; U.cloud.value = A.cloud; U.cloudCol.value.copy(A.cloudCol); U.flash.value = flash*.5;
+    scene.fog.color.copy(A.fog); scene.fog.density = A.fogDen;
+    stars.material.opacity = A.stars; moon.material.opacity = A.moon; moonGlow.material.opacity = .35*A.moon;
+    hemi.color.copy(A.hemiSky); hemi.groundColor.copy(A.hemiGround); hemi.intensity = A.hemiInt + flash*2.5;
+    moonLight.color.copy(A.keyCol); moonLight.intensity = A.keyInt; moonLight.position.copy(A.keyDir).multiplyScalar(10);
+    for (const g of glows) g.m.material.opacity = g.op*A.lights;
+    lanternMat.color.copy(lanternOff).lerp(lanternOn, A.lights);
+    fillLight.intensity = 1.15*(.35 + .65*A.lights);
+    for (const m of goldMats) m.emissiveIntensity = A.facadeEm;
+    slate.emissiveIntensity = .4*A.facadeEm/.55;
+    const cityLit = A.lights >= .5;
+    if (cityLit !== !!cityMat.map){ cityMat.map = cityMat.emissiveMap = cityLit ? cityTex : null; cityMat.needsUpdate = true; }
+    cityMat.emissiveIntensity = cityLit ? A.cityEm : 0;
+    if (cityLit) cityMat.color.copy(cityBase).multiplyScalar(A.cityTint); else cityMat.color.setRGB(.1,.115,.15);
+    shardMat.emissiveIntensity = .6*A.cityEm/.8; shardMat.color.setRGB(.008,.012,.03).multiplyScalar(A.cityTint);
+    // wet paving turns glossy and picks up reflections
+    paving.color.copy(paveBase).multiplyScalar(A.pave*(1 - A.wet*.25)); paving.roughness = .75 - A.wet*.5; paving.metalness = .05 + A.wet*.2;
+    water.material.color.copy(A.water); eyeMat.color.copy(A.eye);
+  }
+  function stepAtm(dt, t){
+    if (!atmReady) return;
+    const k = Math.min(1, dt*.6), A = atmCur, T = atmTgt;
+    COLS.forEach(c => A[c].lerp(T[c], k)); NUMS.forEach(n => A[n] += (T[n] - A[n])*k); A.keyDir.lerp(T.keyDir, k).normalize();
+    U.time.value = t;
+    // lightning in a storm: a double flicker every few seconds
+    if (T.storm){ stormT -= dt; if (stormT < 0){ flash = 1; stormT = 4 + rand()*9; } }
+    flash = flash > .02 ? flash*Math.exp(-dt*7)*(rand() < .9 ? 1 : .2) : 0;
+    applyAtm(dt);
+    // precipitation
+    const nRain = Math.floor(RAIN*A.rain), fall = 16, wind = A.wind*9;
+    rainLines.visible = nRain > 0; rainGeo.setDrawRange(0, nRain*2);
+    if (nRain){ for (let i=0;i<nRain;i++){ const j = i*3; let y = rainSeed[j+1] - fall*dt; let x = rainSeed[j] - wind*dt;
+        if (y < -1){ y = 20 + rand()*3; x = -22 + rand()*48; rainSeed[j+2] = -30 + rand()*38; } if (x < -24) x += 48;
+        rainSeed[j] = x; rainSeed[j+1] = y; const o = i*6, z = rainSeed[j+2];
+        rainPos[o] = x; rainPos[o+1] = y; rainPos[o+2] = z; rainPos[o+3] = x + wind*.035; rainPos[o+4] = y + fall*.035; rainPos[o+5] = z; }
+      rainGeo.attributes.position.needsUpdate = true; rainLines.material.opacity = .25 + .25*A.rain; }
+    const nSnow = Math.floor(FLAKES*A.snow);
+    snowPts.visible = nSnow > 0; snowGeo.setDrawRange(0, nSnow);
+    if (nSnow){ for (let i=0;i<nSnow;i++){ const j = i*3; snowPos[j+1] -= .9*dt; snowPos[j] += (Math.sin(t*.8 + i) *.35 - A.wind*1.5)*dt;
+        if (snowPos[j+1] < 0){ snowPos[j+1] = 20 + rand()*2; snowPos[j] = -22 + rand()*48; } if (snowPos[j] < -24) snowPos[j] += 48; }
+      snowGeo.attributes.position.needsUpdate = true; }
   }
 
   /* ---------- Tommy (toon) ---------- */
@@ -2151,7 +2366,9 @@ function buildScene(){
 
     wheel.rotation.z = -t*.012;
     waterNormal.offset.set(t*.004, t*.012);
-    for (const s of streaks){ s.t.offset.y = -t*.03; s.m.material.opacity = s.op*(.85+.15*Math.sin(t*2.3+s.ph)); }
+    stepAtm(dt, t); renderer.toneMappingExposure = atmCur.exposure;
+    // reflections of the lights on the river (and, when it rains, a stronger sheen)
+    for (const s of streaks){ s.t.offset.y = -t*.03; s.m.material.opacity = s.op*(.85+.15*Math.sin(t*2.3+s.ph))*atmCur.lights*(1 + atmCur.wet*.5); }
     for (const v of vehicles){
       const span = 330, z = -300 + ((v.off + t*v.speed) % span);
       const zz = v.dir>0 ? z : -z - 300;
@@ -2160,7 +2377,7 @@ function buildScene(){
       v.tail.position.set(v.g.position.x, 4.9, zz - v.dir*v.len);
     }
     idle(tommyRig, t, dt, [-.42,-.42,.12,.32]); if (tommyRig.glb) glbAnimate(tommyRig.glb, t, dt, 0, false, [-.42,-.42,.12,.32]);
-    lampLight.intensity = 1.7 + Math.sin(t*9)*.04;
+    lampLight.intensity = (1.7 + Math.sin(t*9)*.04)*atmCur.lights;
 
     renderer.render(scene, camera);
   }
@@ -2168,7 +2385,7 @@ function buildScene(){
   function loop(now){
     if (asleep){ last = now; requestAnimationFrame(loop); return; }
     // daylight London needs less exposure than the night-time menu and cutscene
-    renderer.toneMappingExposure = mode === 'free' ? .8 : 1.15;
+    if (mode !== 'menu') renderer.toneMappingExposure = mode === 'free' ? .8 : 1.15;
     if (mode === 'story'){
       const dt = Math.min(.05,(now-last)/1000); last = now; storyT += dt;
       story.update(storyT, dt);
@@ -2183,6 +2400,7 @@ function buildScene(){
   requestAnimationFrame(loop);
   return {
     resize,
+    atmosphere,
     play(){ mode = 'story'; storyT = 0; story.reset(); },
     stop(){ mode = 'menu'; resize(); },
     line(i, dur){ story.line(i, dur); },
@@ -2214,10 +2432,11 @@ const MENUS = {
     {label:'Back', desc:'Return to the main menu.', act:()=>back()},
   ]},
   credits:{title:'Credits', rows:[
-    {label:'Game', value:'Tommy', desc:'A game about Tommy, set in London at night.'},
+    {label:'Game', value:'Tommy', desc:'A game about Tommy, set in London.'},
     {label:'Setting', value:'Westminster', desc:'The Thames, Big Ben, Parliament and the London Eye.'},
     {label:'Built with', value:'Claude', desc:'Made with Claude.'},
     {label:'Big Ben', value:'Real London time', desc:'The clock faces show the current time in London.'},
+    {label:'Sky & weather', value:'Live London', desc:'The menu follows the real sun over London. Weather data by Open-Meteo.com (CC BY 4.0).'},
     {label:'Back', desc:'Return to the main menu.', act:()=>back()},
   ]},
 };
