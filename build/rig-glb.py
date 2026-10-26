@@ -35,6 +35,30 @@ top=max(v[1] for v in P); handTip=max(v[0] for v in P)
 world[idx['HeadTop_End']]=[wpos(idx['Head'])[0], top, wpos(idx['Head'])[2]]
 for sd,sg in (('Left',1),('Right',-1)):
   hw=wpos(idx[sd+'Hand']); world.setdefault(idx[sd+'HandMiddle4'],[sg*handTip,hw[1],hw[2]])
+# the template skeleton isn't fitted to this body: centre each joint in the limb or torso slice around it
+def centroid(f):
+  q=[v for v in P if f(v)]
+  return [sum(v[i] for v in q)/len(q) for i in range(3)] if q else None
+def fit(nm, axes, f):
+  i=idx[nm]; w=wpos(i); c=centroid(lambda v: f(v,w))
+  if c:
+    for a in axes: w[a]=c[a]
+  world[i]=w
+for nm in ('Hips','Spine','Spine1','Spine2','Neck','Head'):
+  fit(nm,(0,2),lambda v,w: abs(v[1]-w[1])<.012 and abs(v[0])<.12)
+for sd,sg in (('Left',1),('Right',-1)):
+  side=lambda v,sg=sg: v[0]*sg>.005 and abs(v[0])<.2
+  fit(sd+'UpLeg',(0,2),lambda v,w,side=side: side(v) and abs(v[1]-(w[1]-.03))<.012)
+  fit(sd+'Leg',(0,2),lambda v,w,side=side: side(v) and abs(v[1]-w[1])<.012)
+  old=list(wpos(idx[sd+'Foot']))
+  fit(sd+'Foot',(0,2),lambda v,w,side=side: side(v) and w[1]+.01<v[1]<w[1]+.03)
+  nw=wpos(idx[sd+'Foot'])
+  for t in ('ToeBase','Toe_End'):
+    p=wpos(idx[sd+t]); world[idx[sd+t]]=[p[0]+nw[0]-old[0],p[1],p[2]+nw[2]-old[2]]
+  for nm in (sd+'Arm',sd+'ForeArm',sd+'Hand'):
+    fit(nm,(1,2),lambda v,w: abs(v[0]-w[0])<.01 and v[1]>.6)
+  hw=wpos(idx[sd+'Hand']); world[idx[sd+'HandMiddle4']]=[sg*handTip,hw[1],hw[2]]
+for nm in ('Hips','LeftUpLeg','LeftLeg','LeftFoot','LeftArm','LeftForeArm','LeftHand','Spine2'): print(nm,[round(x,3) for x in wpos(idx[nm])])
 isBone={i for i,n in enumerate(nodes) if n['name'].startswith('mixamorig:')}
 for i,n in enumerate(nodes):
   if i not in isBone: continue
