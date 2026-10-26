@@ -179,7 +179,7 @@ body.in-story .ui,body.in-story .shade{display:none}
 .objective b{font-size:14px;letter-spacing:.12em;text-transform:uppercase;color:var(--gold)}
 .objective span{font-size:18px;font-weight:500;line-height:1.3}
 .minimap{position:absolute;left:max(16px,calc(env(safe-area-inset-left,0px) + 3vw));bottom:calc(env(safe-area-inset-bottom,0px) + 24px);width:180px;height:180px;border-radius:50%;
-  border:4px solid rgba(0,0,0,.75);box-shadow:0 6px 20px rgba(0,0,0,.5);pointer-events:none}
+  border:3px solid var(--accent);box-shadow:0 0 0 2px #000,0 6px 20px rgba(0,0,0,.55),inset 0 0 18px rgba(0,0,0,.6);background:#1a1d26;pointer-events:none}
 .hint{position:absolute;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 110px);transform:translateX(-50%);display:flex;align-items:center;gap:10px;cursor:pointer;
   background:rgba(0,0,0,.75);padding:8px 16px 8px 8px;font-size:19px;font-weight:600}
 .hint kbd,.scope kbd{font-family:var(--ui);font-weight:700;font-size:14px;min-width:28px;height:28px;display:grid;place-items:center;background:#F4F4F2;color:#000;border-radius:999px;padding:0 7px}
@@ -1503,7 +1503,9 @@ function buildScene(){
       sh.moveTo(pts[0][0], -pts[0][1]); pts.forEach(p => sh.lineTo(p[0], -p[1])); [...pts].reverse().forEach(p => sh.lineTo(p[0]+260, -p[1]));
       const m = new THREE.Mesh(new THREE.ShapeGeometry(sh), water); m.rotation.x = -Math.PI/2; m.position.y = .1; fsc.add(m); }
     // parks: grass laid with world-scaled UVs so the texture keeps its size
-    const lawn = (w,d,x,z,rot=0) => { const m = flat(w,d,grass,x,z,.03,rot); const uv = m.geometry.attributes.uv; for (let i=0;i<uv.count;i++) uv.setXY(i, uv.getX(i)*w, uv.getY(i)*d); return m; };
+    // what the minimap draws besides buildings and roads: parks, squares and the lake
+    const MAP = {greens:[], plazas:[], lake:{x:-520, z:330, rx:260, ry:40, rot:.37}};
+    const lawn = (w,d,x,z,rot=0) => { MAP.greens.push({x,z,w,d,rot}); const m = flat(w,d,grass,x,z,.03,rot); const uv = m.geometry.attributes.uv; for (let i=0;i<uv.count;i++) uv.setXY(i, uv.getX(i)*w, uv.getY(i)*d); return m; };
     const PARK_SJ = {x:-560, z:300, w:800, d:330, rot:-.37};
     lawn(PARK_SJ.w,PARK_SJ.d,PARK_SJ.x,PARK_SJ.z,PARK_SJ.rot);                  // St James's Park
     { const lake = new THREE.Mesh(new THREE.CircleGeometry(1,48), water); lake.scale.set(260,40,1); lake.rotation.set(-Math.PI/2,0,.37); lake.position.set(-520,.06,330); fsc.add(lake);
@@ -1511,10 +1513,10 @@ function buildScene(){
     lawn(420,560,-1130,20);                                                     // Green Park
     lawn(380,470,-1230,620);                                                    // palace gardens
     lawn(110,95,115,945);                                                       // Parliament Square
-    flat(180,240,std(0xd8c9a0,{roughness:1}),-55,250,.025);                     // Horse Guards Parade
+    flat(180,240,std(0xd8c9a0,{roughness:1}),-55,250,.025); MAP.plazas.push({x:-55,z:250,w:180,d:240,rot:0,col:'#9c8a62'});                     // Horse Guards Parade
 
     /* ---- Trafalgar Square ---- */
-    flat(120,85,paving,0,10,.1);
+    flat(120,85,paving,0,10,.1); MAP.plazas.push({x:0,z:10,w:120,d:85,rot:0,col:'#6e675a'});
     fb(9,10,9,stone,0,5,25); { const col = new THREE.Mesh(new THREE.CylinderGeometry(1.7,2.0,36,16), stone); col.position.set(0,28,25); fsc.add(col); }
     fb(4.6,2.5,4.6,bronze,0,47.2,25); { const nel = new THREE.Mesh(new THREE.CylinderGeometry(.6,.8,4,10), stoneDark); nel.position.set(0,50.5,25); fsc.add(nel); const hd = new THREE.Mesh(new THREE.SphereGeometry(.6,10,8), stoneDark); hd.position.set(0,53,25); fsc.add(hd); }
     for (const [sx,sz] of [[-1,-1],[1,-1],[-1,1],[1,1]]){ const x = sx*9.5, z = 25 + sz*9.5; fb(3.4,2.2,7,stone,x,1.1,z); fb(2.2,1.6,4.6,bronze,x,3,z); const h = new THREE.Mesh(new THREE.SphereGeometry(1.2,10,8), bronze); h.position.set(x,4.2,z + (sz<0 ? -1.6 : 1.6)*0 - 1.8); fsc.add(h); }
@@ -1748,7 +1750,7 @@ function buildScene(){
       for (let i=0;i<uv.count;i++) uv.setY(i, uv.getY(i)*len/24);
       roadY = layer ?? (.08 + (mainN++ % 3)*.008);
       const m = new THREE.Mesh(geo, mat); m.rotation.set(-Math.PI/2, 0, Math.atan2(dx,dz) + Math.PI); m.position.set((x1+x2)/2, roadY, (z1+z2)/2); fsc.add(m);
-      const ri = roads.push({x1,z1,x2,z2,w,len,y:roadY}) - 1;
+      const ri = roads.push({x1,z1,x2,z2,w,len,y:roadY,mall:mat === MALL}) - 1;
       // spatial index so kerb and tree placement only test nearby roads
       const pad = w/2 + 2;
       for (let i=Math.floor((Math.min(x1,x2)-pad)/BK); i<=Math.floor((Math.max(x1,x2)+pad)/BK); i++)
@@ -1964,6 +1966,7 @@ function buildScene(){
     const tommy = buildTommy(); ph.add(tommy.root); attachGLB(tommy);
     const shadow = addShadow(ph, 0, 0, 1.1, .9);
     const P = {x:5.6, z:-5, yaw:Math.PI*.5, camYaw:-Math.PI*.35, pitch:.32, walk:0, speed:0};
+    Object.assign(MAP, {roads, cols:cityCol, bankX});
 
     /* ---- the real London sky in free roam: time of day and live weather (the PM's cutscene always stays at night) ---- */
     // Five looks keyed to the sun, with the weather on top, eased over a few seconds. At night the city's windows,
@@ -2453,9 +2456,9 @@ function buildScene(){
           nearWhat = Math.hypot(P.x-LOBBY.x, P.z-(LOBBY.z-1.5)) < 2.4 ? 'lift' : Math.abs(P.z-DS.z) < 9 && P.x > DS.x0 && P.x < DS.x0+6 ? 'gate' : null;
           talkT -= dt;
           const atTube = !nearWhat && TUBE.some(e => Math.hypot(P.x - e.x - (e.face === 'e' ? 2 : 0), P.z - e.z - (e.face === 's' ? 2 : 0)) < 3.5);
-          if (atTube){ freeHint('Westminster Station · Circle, District and Jubilee lines', true); drawCityMap(P, cityCol, bankX, LANDMARKS); return; }
+          if (atTube){ freeHint('Westminster Station · Circle, District and Jubilee lines', true); drawCityMap(P, MAP, LANDMARKS); return; }
           freeHint(nearWhat === 'lift' ? 'Take the lift up to the penthouse' : nearWhat === 'gate' ? (talkT > 0 ? GUARD_LINES[talkI] : 'Talk to the armed officer') : null, nearWhat === 'gate' && talkT > 0);
-          drawCityMap(P, cityCol, bankX, LANDMARKS);
+          drawCityMap(P, MAP, LANDMARKS);
         } else {
           nearWhat = Math.hypot(P.x-TEL.x, P.z-TEL.z) < 1.6 ? 'scope' : Math.hypot(P.x-LIFT.x, P.z-LIFT.z) < 1.4 ? 'lift' : (P.z < -4.4 && Math.abs(P.x+3) < 2.3 ? 'tv' : null);
           freeHint(nearWhat === 'scope' ? 'Look through the telescope' : nearWhat === 'tv' ? 'Watch the news' : nearWhat === 'lift' ? 'Take the lift down to the street' : null);
@@ -2826,26 +2829,71 @@ function freeScope(lm){
   $('scopeName').textContent = lm.name; $('scopeDesc').textContent = lm.desc;
   $('scopePrev').hidden = $('scopeNext').hidden = !!lm.tv;
 }
-// north-up minimap of the penthouse, with blips on the rim pointing at the landmarks
+// minimap: a dark street map in the open-world style, north up. Markers are colour-coded by kind (government purple,
+// sights gold, the Eye teal, the Tube as a roundel); a light cone shows where the camera is looking.
 const BLIP = {'Portcullis House':'PC','Westminster Station':'U','10 Downing Street':'10','Cabinet Office':'CO','Big Ben':'BB','Houses of Parliament':'HP','Westminster Abbey':'WA','The Cenotaph':'C','Trafalgar Square':'TS','Buckingham Palace':'BP','London Eye':'LE'};
+const BLIP_KIND = {'10 Downing Street':'gov','Cabinet Office':'gov','Houses of Parliament':'gov','Portcullis House':'gov','Westminster Station':'tube','London Eye':'eye'};
+// the accent follows the time of day, so it's read from CSS (at most once a second)
+let accentCache = '#A35CF0', accentAt = -1e9;
+const accentNow = () => { const t = performance.now(); if (t - accentAt > 1000){ accentAt = t; accentCache = getComputedStyle(document.body).getPropertyValue('--accent').trim() || accentCache; } return accentCache; };
+function mapBlip(g, lm, x, y){
+  const kind = BLIP_KIND[lm.name] || 'sight', label = BLIP[lm.name] || '?';
+  g.lineWidth = 2; g.strokeStyle = '#000';
+  if (kind === 'tube'){
+    g.fillStyle = '#fff'; g.beginPath(); g.arc(x,y,9,0,7); g.fill(); g.stroke();
+    g.strokeStyle = '#dc241f'; g.lineWidth = 3; g.beginPath(); g.arc(x,y,6.2,0,7); g.stroke();
+    g.fillStyle = '#0019a8'; g.fillRect(x-9,y-2.6,18,5.2); return; }
+  g.fillStyle = kind === 'gov' ? accentNow() : kind === 'eye' ? '#3fc1c9' : '#F2C76B';
+  g.beginPath(); g.arc(x,y,9,0,7); g.fill(); g.stroke();
+  g.fillStyle = kind === 'gov' ? '#fff' : '#111'; g.fillText(label, x, y+.5);
+}
+// markers pinned to the rim are spread out along it so they never stack on top of each other
+function rimSpread(items, R){
+  const gap = 19/(R-30); items.sort((a,b) => a.a - b.a);
+  for (let pass=0; pass<3; pass++) for (let i=1; i<items.length; i++) if (items[i].a - items[i-1].a < gap) items[i].a = items[i-1].a + gap;
+  return items.map(it => ({lm:it.lm, x:R + Math.cos(it.a)*(R-30), y:R + Math.sin(it.a)*(R-30)}));
+}
+// the ring round the edge: compass letters, with N in the accent colour
+function mapRim(g, R){
+  g.strokeStyle = 'rgba(255,255,255,.18)'; g.lineWidth = 1.5; g.beginPath(); g.arc(R,R,R-22,0,7); g.stroke();
+  g.font = '800 11px Arial,sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  [['N',0,-1],['E',1,0],['S',0,1],['W',-1,0]].forEach(([t,x,y]) => {
+    const px = R + x*(R-9), py = R + y*(R-9);
+    if (t === 'N'){ g.fillStyle = accentNow(); g.beginPath(); g.arc(px,py,8,0,7); g.fill(); g.fillStyle = '#fff'; }
+    else g.fillStyle = 'rgba(255,255,255,.7)';
+    g.fillText(t, px, py+.5); });
+}
+// Tommy: a purple arrow with a white edge, under a soft cone of the camera's view
+function mapPlayer(g, R, P){
+  const look = Math.atan2(-Math.cos(P.camYaw), -Math.sin(P.camYaw));
+  const cone = g.createRadialGradient(R,R,4,R,R,R*.62); cone.addColorStop(0,'rgba(255,255,255,.32)'); cone.addColorStop(1,'rgba(255,255,255,0)');
+  g.fillStyle = cone; g.beginPath(); g.moveTo(R,R); g.arc(R,R,R*.62,look-.6,look+.6); g.closePath(); g.fill();
+  g.save(); g.translate(R,R); g.rotate(Math.PI - P.yaw);
+  g.shadowColor = 'rgba(0,0,0,.6)'; g.shadowBlur = 6; g.fillStyle = accentNow(); g.strokeStyle = '#fff'; g.lineWidth = 2;
+  g.beginPath(); g.moveTo(0,-10); g.lineTo(7.5,7.5); g.lineTo(0,3.5); g.lineTo(-7.5,7.5); g.closePath(); g.fill(); g.stroke(); g.restore();
+}
+// north-up minimap of the penthouse, with blips on the rim pointing at the landmarks
 function drawMinimap(P, landmarks, P0){
   const c = $('minimap'), g = c.getContext('2d'), W = c.width, R = W/2, s = 7.2;
   g.clearRect(0,0,W,W); g.save(); g.beginPath(); g.arc(R,R,R,0,7); g.clip();
-  g.fillStyle = '#7d8a7a'; g.fillRect(0,0,W,W);
+  // 110 m up: the city far below as a dark haze
+  const bg = g.createRadialGradient(R,R,10,R,R,R); bg.addColorStop(0,'#2c3140'); bg.addColorStop(1,'#1a1d26'); g.fillStyle = bg; g.fillRect(0,0,W,W);
   const X = x => R + (x - P.x)*s, Z = z => R + (z - P.z)*s;
-  g.fillStyle = '#a7a39b'; g.fillRect(X(-14),Z(-8),24*s,16*s);
-  g.fillStyle = '#d8cdb8'; g.fillRect(X(-10),Z(-8),20*s,12*s);
-  g.fillStyle = '#efe8da'; g.fillRect(X(4),Z(-8),6*s,12*s);
-  g.strokeStyle = '#2b2d33'; g.lineWidth = 2; g.strokeRect(X(-10),Z(-8),20*s,12*s);
+  g.fillStyle = '#6f747c'; g.fillRect(X(-14),Z(-8),24*s,16*s);                       // terrace decking
+  g.fillStyle = '#b4885a'; g.fillRect(X(-10),Z(-8),20*s,12*s);                       // oak floor
+  g.fillStyle = '#d8ccb4'; g.fillRect(X(4),Z(-8),6*s,12*s);                          // bedroom
+  g.fillStyle = '#3f6fa0'; g.fillRect(X(-3)-11,Z(-7.8),22,4);                        // TV
+  g.fillStyle = '#5a7a9c'; g.fillRect(X(7.3)-8,Z(-6.65)-9,16,18);                    // bed
+  g.strokeStyle = '#f4f1ea'; g.lineWidth = 2.5; g.strokeRect(X(-10),Z(-8),20*s,12*s);
   g.beginPath(); g.moveTo(X(4),Z(-8)); g.lineTo(X(4),Z(-1.2)); g.moveTo(X(4),Z(.4)); g.lineTo(X(4),Z(4)); g.stroke();
-  g.fillStyle = '#c9a24a'; g.beginPath(); g.arc(X(-12.8),Z(6.6),4,0,7); g.fill();
+  g.strokeStyle = 'rgba(160,210,255,.8)'; g.lineWidth = 3; g.beginPath(); g.moveTo(X(-10),Z(-8)); g.lineTo(X(-10),Z(4)); g.lineTo(X(10),Z(4)); g.stroke();   // glass walls
+  g.fillStyle = '#F2C76B'; g.strokeStyle = '#000'; g.lineWidth = 2; g.beginPath(); g.arc(X(-12.8),Z(6.6),5,0,7); g.fill(); g.stroke();   // telescope
+  g.fillStyle = accentNow(); g.fillRect(X(1.6)-7,Z(-7.6)-5,14,10); g.strokeRect(X(1.6)-7,Z(-7.6)-5,14,10);                              // lift
+  mapPlayer(g, R, P);
   g.restore();
-  g.font = '700 10px Arial,sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-  landmarks.forEach(lm => { const a = Math.atan2(lm.at.z - P0.z, lm.at.x - P0.x), x = R + Math.cos(a)*(R-13), y = R + Math.sin(a)*(R-13);
-    g.fillStyle = '#111'; g.beginPath(); g.arc(x,y,9,0,7); g.fill(); g.fillStyle = '#F2C76B'; g.fillText(BLIP[lm.name] || '?', x, y+.5); });
-  g.save(); g.translate(R,R); g.rotate(Math.PI - P.yaw); g.fillStyle = '#A35CF0'; g.strokeStyle = '#000'; g.lineWidth = 2;
-  g.beginPath(); g.moveTo(0,-9); g.lineTo(7,7); g.lineTo(0,3); g.lineTo(-7,7); g.closePath(); g.fill(); g.stroke(); g.restore();
-  g.fillStyle = '#fff'; g.font = '800 12px Arial,sans-serif'; g.fillText('N', R, 10);
+  mapRim(g, R);
+  g.font = '700 10px Arial,sans-serif';
+  rimSpread(landmarks.map(lm => ({lm, a:Math.atan2(lm.at.z - P0.z, lm.at.x - P0.x)})), R).forEach(b => mapBlip(g, b.lm, b.x, b.y));
 }
 // E or a click on the hint: most things happen in the engine, the lift needs a fade
 async function roamInteract(){
@@ -2862,27 +2910,39 @@ async function roamInteract(){
   await fadeTo(false);
   roam.riding = false;
 }
-// city minimap: buildings, the Thames and landmark blips around Tommy, north up
-function drawCityMap(P, cols, bankX, landmarks){
-  const c = $('minimap'), g = c.getContext('2d'), W = c.width, R = W/2, s = .55;
-  const X = x => R + (x - P.x)*s, Z = z => R + (z - P.z)*s;
+// city minimap: streets, parks, the river and the lake, buildings and landmark blips around Tommy, north up
+function drawCityMap(P, M, landmarks){
+  const c = $('minimap'), g = c.getContext('2d'), W = c.width, R = W/2, s = .55, V = 200;
+  const X = x => R + (x - P.x)*s, Z = z => R + (z - P.z)*s, near = (x,z,r=0) => Math.abs(x-P.x) < V+r && Math.abs(z-P.z) < V+r;
   g.clearRect(0,0,W,W); g.save(); g.beginPath(); g.arc(R,R,R,0,7); g.clip();
-  g.fillStyle = '#9a978f'; g.fillRect(0,0,W,W);
-  g.fillStyle = '#5c8fb0'; g.beginPath();
-  for (let z = P.z - 220; z <= P.z + 220; z += 10) g.lineTo(X(bankX(z)), Z(z));
-  for (let z = P.z + 220; z >= P.z - 220; z -= 10) g.lineTo(X(bankX(z) + 260), Z(z));
-  g.fill();
-  g.fillStyle = '#5f6168';
-  for (const [a,b,cc,d] of cols){ if (cc < P.x-200 || a > P.x+200 || d < P.z-200 || b > P.z+200) continue; g.fillRect(X(a),Z(b),(cc-a)*s,(d-b)*s); }
+  g.fillStyle = '#262a33'; g.fillRect(0,0,W,W);
+  // parks and squares
+  const rect = (o, fill) => { if (!near(o.x,o.z,Math.max(o.w,o.d))) return; g.save(); g.translate(X(o.x),Z(o.z)); g.rotate(-o.rot); g.fillStyle = fill; g.fillRect(-o.w*s/2,-o.d*s/2,o.w*s,o.d*s); g.restore(); };
+  M.greens.forEach(o => rect(o, '#3d7a47')); M.plazas.forEach(o => rect(o, o.col));
+  // water: the Thames and the St James's Park lake
+  g.fillStyle = '#2f73b5'; g.strokeStyle = '#6fb2e6'; g.lineWidth = 2; g.beginPath();
+  for (let z = P.z - 220; z <= P.z + 220; z += 10) g.lineTo(X(M.bankX(z)), Z(z));
+  for (let z = P.z + 220; z >= P.z - 220; z -= 10) g.lineTo(X(M.bankX(z) + 260), Z(z));
+  g.closePath(); g.fill(); g.stroke();
+  if (near(M.lake.x, M.lake.z, M.lake.rx)){ g.beginPath(); g.ellipse(X(M.lake.x), Z(M.lake.z), M.lake.rx*s, M.lake.ry*s, M.lake.rot, 0, 7); g.fill(); g.stroke(); }
+  // streets: side streets grey, main roads bright, The Mall red
+  g.lineCap = 'round';
+  for (const pass of [0,1,2]) for (const r of M.roads){
+    const kind = r.mall ? 2 : r.w >= 14 ? 1 : 0; if (kind !== pass) continue;
+    if (!near((r.x1+r.x2)/2, (r.z1+r.z2)/2, r.len/2)) continue;
+    g.strokeStyle = kind === 2 ? '#c4554a' : kind === 1 ? '#e8ebf2' : '#8a909e'; g.lineWidth = Math.max(2, r.w*s);
+    g.beginPath(); g.moveTo(X(r.x1),Z(r.z1)); g.lineTo(X(r.x2),Z(r.z2)); g.stroke(); }
+  // buildings, with a lighter top edge so blocks read as solid
+  for (const [a,b,cc,d] of M.cols){ if (cc < P.x-V || a > P.x+V || d < P.z-V || b > P.z+V || cc-a < 1.5) continue;
+    g.fillStyle = '#4a5060'; g.fillRect(X(a),Z(b),(cc-a)*s,(d-b)*s); g.fillStyle = '#5d6475'; g.fillRect(X(a),Z(b),(cc-a)*s,Math.min(2,(d-b)*s)); }
+  mapPlayer(g, R, P);
   g.restore();
-  g.font = '700 10px Arial,sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-  landmarks.forEach(lm => {
-    let x = X(lm.at.x), y = Z(lm.at.z); const dx = x-R, dy = y-R, d = Math.hypot(dx,dy);
-    if (d > R-13){ x = R + dx/d*(R-13); y = R + dy/d*(R-13); }
-    g.fillStyle = '#111'; g.beginPath(); g.arc(x,y,9,0,7); g.fill(); g.fillStyle = '#F2C76B'; g.fillText(BLIP[lm.name] || '?', x, y+.5); });
-  g.save(); g.translate(R,R); g.rotate(Math.PI - P.yaw); g.fillStyle = '#A35CF0'; g.strokeStyle = '#000'; g.lineWidth = 2;
-  g.beginPath(); g.moveTo(0,-9); g.lineTo(7,7); g.lineTo(0,3); g.lineTo(-7,7); g.closePath(); g.fill(); g.stroke(); g.restore();
-  g.fillStyle = '#fff'; g.font = '800 12px Arial,sans-serif'; g.fillText('N', R, 10);
+  mapRim(g, R);
+  g.font = '700 10px Arial,sans-serif';
+  const rim = [];
+  landmarks.forEach(lm => { const x = X(lm.at.x), y = Z(lm.at.z), dx = x-R, dy = y-R;
+    if (Math.hypot(dx,dy) > R-30) rim.push({lm, a:Math.atan2(dy,dx)}); else mapBlip(g, lm, x, y); });
+  rimSpread(rim, R).forEach(b => mapBlip(g, b.lm, b.x, b.y));
 }
 $('hint').addEventListener('click', roamInteract);
 $('pauseBtn').addEventListener('click', () => setPause(true));
