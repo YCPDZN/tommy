@@ -26,6 +26,7 @@ A game starring Tommy (no last name), set in Westminster, London.
 - `tommy-night-run.html`: the 3D main menu (no gameplay yet), built with three.js r128 from cdnjs. It's also published as a private Claude artifact: https://claude.ai/artifact/BZAnqDAhc9cMxuwnSb9tJx. Republish from this file to update that link.
   - The visuals are a toon-shaded 3D Tommy on the Embankment, with Big Ben (showing real London time), Parliament, the London Eye and Westminster Bridge traffic.
   - The menu is styled like an open-world crime game (GTA-like), without using any real game's names, logos or fonts.
+  - The UI accent is **purple** (`--accent` #A35CF0 / `--accent-deep` #5A27A8, at the user's request). It's used across the menu, subtitles, telescope panel, RUN button and minimap arrow. Tommy's shirt stays blue.
 - **Story Mode** (just "Story Mode", no chapter numbers) opens with the cutscene "The Address". It's in the same file. Prime Minister **Jordan Andreas** (Conservative Party; fictional) speaks outside 10 Downing Street, with press and a police officer.
   - Tommy is **not** at the speech. The cutscene opens in Tommy's flat, where the speech plays live on his TV ("LDN News 24").
   - It cuts between the flat and the broadcast. It ends on his locked bedroom door ("Tommy's Room – Keep Out"), with warm light under it.
