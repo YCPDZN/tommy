@@ -93,7 +93,9 @@ A game starring Tommy (no last name), set in Westminster, London.
     - Sky domes use `depthTest:false` + `renderOrder:-1`.
     - Overlapping flat surfaces must never be coplanar: N-S side streets at y .05, E-W at .062, main roads cycling .08/.088/.096, zebras at road y + .014, Tommy's street shadow at .12.
   - Publish the artifact with `assets/water.jpg` and `assets/tree-sheet.jpg` in `files`.
-  - **Free roam also follows the real London sky** (the same `SKY` state as the menu): `skyTarget()`/`skyStep()` in `buildFree`.
+  - **The tutorial is always set in the day** (user's rule). The free roam after "The next day", which is all of free roam for now, uses a fixed mid-morning sun (el 38°, az 118°, `tutorialSky`) under the live weather, whatever the real time.
+    - `free.setTutorial(false)` switches free roam to the real time of day, for story parts after the tutorial.
+  - **Free roam's sky system** (it follows the real London sky once the tutorial is over; the same `SKY` state as the menu): `skyTarget()`/`skyStep()` in `buildFree`.
     - It eases between five `FREE_SKY` looks, sets the sun to its real position (+x east, +z south) and applies the live weather.
       - Cloud cover greys the sky and hides the sun, stars and moon. Fog, rain and snow close the distance in.
       - Rain streaks and snowflakes wrap in a 40 m box round the camera. They're hidden inside the penthouse.

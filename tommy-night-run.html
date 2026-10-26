@@ -2025,9 +2025,14 @@ function buildScene(){
     const snowPts = new THREE.Points(snowGeo, new THREE.PointsMaterial({map:glowTex, color:0xffffff, size:.14, transparent:true, opacity:.9, depthWrite:false}));
     snowPts.frustumCulled = false; snowPts.visible = false; fsc.add(snowPts);
     const wrap = (v, c, half) => c + ((((v - c + half) % (2*half)) + 2*half) % (2*half)) - half;
+    // the tutorial (the morning after the speech) is always set in the day: a fixed mid-morning sun from the south-east,
+    // under the live weather. Later free roam can follow the real time of day (setTutorial(false)).
+    let tutorial = true;
+    const tutorialSky = () => ({phase:'day', el:38, az:118, kind:SKY.kind, wx:SKY.wx});
     function skyStep(dt, t, tx, ty, tz){
-      const key = [SKY.phase, SKY.kind, SKY.wx ? SKY.wx.cloud + '/' + SKY.wx.precip : '', Math.round(SKY.el), Math.round(SKY.az/2)].join('|');
-      if (key !== skyKey){ skyKey = key; skyTarget(SKY); }
+      const st = tutorial ? tutorialSky() : SKY;
+      const key = [st.phase, st.kind, st.wx ? st.wx.cloud + '/' + st.wx.precip : '', Math.round(st.el), Math.round(st.az/2)].join('|');
+      if (key !== skyKey){ skyKey = key; skyTarget(st); }
       const k = Math.min(1, dt*.6), A = skyCur, T = skyTgt;
       FCOLS.forEach(c => A[c].lerp(T[c], k)); FNUMS.forEach(n => A[n] += (T[n] - A[n])*k);
       if (T.storm){ stormF -= dt; if (stormF < 0){ flashF = 1; stormF = 4 + rand()*9; } }
@@ -2316,6 +2321,7 @@ function buildScene(){
 
     return {
       scene: fsc,
+      setTutorial(on){ tutorial = on; skyKey = ''; },
       setQuality(q){
         const on = q !== 'Low', size = q === 'Ultra' ? 4096 : 2048; shadowR = q === 'Ultra' ? 110 : 75;
         sun.castShadow = on;
