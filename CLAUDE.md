@@ -63,6 +63,18 @@ A game starring Tommy (no last name), set in Westminster, London.
     - Both are minimap (`PC`, `U`) and telescope landmarks.
   - `assets/water.jpg` (the user's water image) textures the Thames and the St James's Park lake, drifting with a ripple normal map.
   - `assets/tree-sheet.jpg` (the user's bark and leaf sheet) is cut at load time: the bark panel becomes the trunk texture, and the leafy branch is chroma-keyed into leaf cards. Trees are instanced and planted in even rows (The Mall, the Embankment, Northumberland Ave) and on a gently jittered lattice in the parks.
+  - **Graphics (realistic world, cartoon characters, at the user's choice):**
+    - **Sun shadows:** a PCF-soft shadow box follows Tommy, snapped to shadow-map texels (`followSun`). The sun (`SUN_DIR`) is about 38° up, from the south-east.
+      - Lit solid meshes cast and receive. Flat ground layers, glass, unlit materials and the kerbs (`userData.noCast`) don't cast. The leaf cards do (`userData.cast`).
+    - **Sky:** a shader with a sun glow and drifting fbm clouds (`skyShader`). The same sky, encoded via `linearToOutputTexel`, is baked by PMREM into `fsc.environment` for reflections.
+      - `envMapIntensity` is about .45 on matt materials, .6 on facades and 1 on metal, paint and glass.
+    - **Facades** (`facadeOf`) use 256 px tiles with roughness/metalness and bump maps, so the glass is glossy and the windows are recessed with sills. `GLASS` buildings are curtain walls.
+      - Every `building()` gets instanced trims: a plinth, a string course at 3 m and a cornice.
+    - **Exposure:** free roam renders at .8, the menu and cutscene at 1.15. Pavements are mid-grey York stone.
+    - **Graphics Quality** has three levels:
+      - Low: pixel ratio 1, no shadows, so the blob shadow under Tommy returns.
+      - High: up to 2× resolution, 2048 shadow map over ±75 m.
+      - Ultra: up to 3× resolution, 4096 shadow map over ±110 m.
   - **Anti-flicker rules:**
     - The renderer uses `logarithmicDepthBuffer`, and the camera's far plane is 9000.
     - Sky domes use `depthTest:false` + `renderOrder:-1`.

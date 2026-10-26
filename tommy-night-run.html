@@ -349,6 +349,7 @@ function buildScene(){
   renderer.outputEncoding = THREE.sRGBEncoding;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.15;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
   const scene = new THREE.Scene();
   const FOG = new THREE.Color(0x1d1a3c);
@@ -1166,16 +1167,47 @@ function buildScene(){
   /* ================= Free roam: Tommy's penthouse over central London, the next day ================= */
   // World map in metres: +x east, +z south, Trafalgar Square at the origin.
   let free = null;
-  const getFree = () => { if (!free){ free = buildFree(); linearize(free.scene); } return free; };
+  const getFree = () => { if (!free){ free = buildFree(); linearize(free.scene); free.setQuality(settings.quality); } return free; };
 
   function buildFree(){
     const fsc = new THREE.Scene();
     fsc.fog = new THREE.Fog(0xc9d8e6, 600, 3400);
-    fsc.add(Object.assign(new THREE.Mesh(new THREE.SphereGeometry(3800,24,12), new THREE.ShaderMaterial({side:THREE.BackSide,depthWrite:false,depthTest:false,fog:false,
+    // sky: a blue gradient with a sun glow and slowly drifting fbm clouds. uEnv renders the same sky (with a city-grey
+    // ground below the horizon, in linear light) into the environment map that glass, paint and water reflect.
+    const SUN_DIR = new THREE.Vector3(480,430,260).normalize();   // mid-morning sun, about 38° up, from the south-east
+    const skyShader = env => new THREE.ShaderMaterial({side:THREE.BackSide, depthWrite:false, depthTest:!!env, fog:false,
+      uniforms:{uSun:{value:SUN_DIR}, uTime:{value:0}, uEnv:{value:env ? 1 : 0}},
       vertexShader:'varying vec3 vP;void main(){vP=normalize(position);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
-      fragmentShader:'varying vec3 vP;void main(){float y=clamp(vP.y,0.,1.);gl_FragColor=vec4(mix(vec3(.79,.85,.9),vec3(.33,.55,.82),smoothstep(0.,.45,y)),1.);}'})), {renderOrder:-1}));
-    fsc.add(new THREE.HemisphereLight(0xe2ecff, 0x6b6450, .8));
-    const sun = new THREE.DirectionalLight(0xfff0d6, 1.35); sun.position.set(500,700,150); fsc.add(sun);
+      fragmentShader:`uniform vec3 uSun;uniform float uTime,uEnv;varying vec3 vP;
+        float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+        float n(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h(i),h(i+vec2(1,0)),f.x),mix(h(i+vec2(0,1)),h(i+vec2(1,1)),f.x),f.y);}
+        float fbm(vec2 p){float v=0.,a=.5;for(int i=0;i<5;i++){v+=a*n(p);p*=2.03;a*=.5;}return v;}
+        void main(){vec3 d=normalize(vP);float y=clamp(d.y,0.,1.);
+          vec3 col=mix(vec3(.79,.85,.9),vec3(.30,.52,.82),smoothstep(0.,.45,y));
+          float s=max(dot(d,uSun),0.);
+          col+=vec3(1.,.9,.72)*(pow(s,8.)*.22+pow(s,90.)*.5)+vec3(1.,.97,.9)*smoothstep(.9993,.9997,s)*1.6;
+          if(d.y>0.){vec2 uv=d.xz/(d.y+.12)*1.3+vec2(uTime*.006,uTime*.002);
+            float c=smoothstep(.5,.8,fbm(uv))*smoothstep(0.,.2,d.y);
+            vec3 cc=mix(vec3(.7,.74,.8),vec3(1.),smoothstep(.45,.9,fbm(uv*1.7+.35)))+vec3(1.,.9,.7)*pow(s,6.)*.35;
+            col=mix(col,cc,c*.85);}
+          // the environment render target has its own encoding (RGBE on many devices), so write through three's encoder
+          if(uEnv>.5){col=mix(col,vec3(.42,.4,.37),smoothstep(0.,-.12,d.y));gl_FragColor=linearToOutputTexel(vec4(pow(col,vec3(2.2)),1.));}
+          else gl_FragColor=vec4(col,1.);}`});
+    const skyMat = skyShader(false);
+    fsc.add(Object.assign(new THREE.Mesh(new THREE.SphereGeometry(3800,48,24), skyMat), {renderOrder:-1}));
+    { const pmrem = new THREE.PMREMGenerator(renderer), envScene = new THREE.Scene();
+      envScene.add(new THREE.Mesh(new THREE.SphereGeometry(50,48,24), skyShader(true)));
+      fsc.environment = pmrem.fromScene(envScene, .02).texture; pmrem.dispose(); }
+    fsc.add(new THREE.HemisphereLight(0xe2ecff, 0x6b6450, .38));
+    // the sun casts real shadows in a box that follows Tommy (sized by the quality setting, see setQuality)
+    const sun = new THREE.DirectionalLight(0xfff0d6, 1.4); sun.position.copy(SUN_DIR).multiplyScalar(700); fsc.add(sun, sun.target);
+    sun.shadow.mapSize.set(2048,2048); sun.shadow.bias = -.0004; sun.shadow.normalBias = .05;
+    Object.assign(sun.shadow.camera, {near:1, far:1100}); let shadowR = 75;
+    // keep the shadow box locked to whole shadow-map texels as it moves, so edges don't crawl
+    const sunBasis = new THREE.Matrix4().lookAt(SUN_DIR, new THREE.Vector3(), new THREE.Vector3(0,1,0)), sunInv = sunBasis.clone().transpose(), sv = new THREE.Vector3();
+    const followSun = (x,y,z) => { const texel = 2*shadowR/sun.shadow.mapSize.x; sv.set(x,y,z).applyMatrix4(sunInv);
+      sv.x = Math.round(sv.x/texel)*texel; sv.y = Math.round(sv.y/texel)*texel; sv.applyMatrix4(sunBasis);
+      sun.target.position.copy(sv); sun.position.copy(sv).addScaledVector(SUN_DIR, 700); };
     // street-level collision: footprints of everything Tommy can't walk through, and meshes the camera can't see through
     const cityCol = [], cityMeshes = [], cityGroups = [];
     const solidCity = (m, x1,z1,x2,z2) => { cityCol.push([x1,z1,x2,z2]); cityMeshes.push({m, x:(x1+x2)/2, z:(z1+z2)/2, r:Math.hypot(x2-x1,z2-z1)/2}); };
@@ -1184,21 +1216,49 @@ function buildScene(){
     // box whose texture tiles every 12 m, so facades keep their scale
     function boxUV(w,h,d){ const g = new THREE.BoxGeometry(w,h,d), uv = g.attributes.uv, dims = [[d,h],[d,h],[w,d],[w,d],[w,h],[w,h]];
       for (let f=0; f<6; f++) for (let v=0; v<4; v++){ const i = f*4+v; uv.setXY(i, uv.getX(i)*dims[f][0]/12, uv.getY(i)*dims[f][1]/12); } return g; }
-    const facadeOf = (base, win, frame) => { const t = srgb(canvasTex(128,128,(g,w,h)=>{g.fillStyle=base;g.fillRect(0,0,w,h);for(let y=8;y<h;y+=32)for(let x=8;x<w;x+=32){g.fillStyle=frame;g.fillRect(x-2,y-2,20,26);g.fillStyle=win;g.fillRect(x,y,16,22);}})); t.wrapS = t.wrapT = THREE.RepeatWrapping; return std(0xffffff,{map:t,roughness:.9}); };
-    const PORTLAND = facadeOf('#ddd5c2','#5d6c7c','#cfc6b0'), BRICK = facadeOf('#9a5a44','#4d5866','#e0d8c8'), GLASS = facadeOf('#7d93a8','#a9c3d8','#5b6d80'), CREAM = facadeOf('#e8e0cc','#66707c','#d8cfb8');
+    // facades: 12 m tiles (four 3 m bays by four 3 m floors) at 256 px, with matching maps so the stone is matt, the
+    // glass glossy enough to reflect the sky, and a bump map for recessed windows, sills, stone courses and floor bands
+    const facadeOf = (base, win, frame, curtain=false) => {
+      const S = 256, B = 64, tex = draw => { const t = canvasTex(S,S,draw); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; return t; };
+      const wins = []; for (let f=0; f<4; f++) for (let b=0; b<4; b++) wins.push(curtain ? [b*B+2, f*B+10, B-4, B-12] : [b*B+18, f*B+16, 28, 34]);
+      const bars = (g,[x,y,w,h]) => { g.fillRect(x+w/2-1,y,2,h); g.fillRect(x,y+Math.round(h*.35),w,2); };
+      const map = srgb(tex(g => { g.fillStyle = base; g.fillRect(0,0,S,S);
+        for (let i=0;i<2400;i++){ g.fillStyle = rand() < .5 ? 'rgba(0,0,0,.05)' : 'rgba(255,255,255,.05)'; g.fillRect(rand()*S, rand()*S, 2, 2); }
+        if (!curtain){ g.fillStyle = 'rgba(0,0,0,.07)'; for (let y=0;y<S;y+=16) g.fillRect(0,y,S,1); }
+        for (let f=0; f<4; f++){ g.fillStyle = curtain ? frame : 'rgba(255,255,255,.2)'; g.fillRect(0,f*B,S,curtain ? 10 : 4); }
+        for (const w of wins){ const [x,y,ww,hh] = w;
+          if (!curtain){ g.fillStyle = frame; g.fillRect(x-4,y-4,ww+8,hh+6); g.fillStyle = 'rgba(255,255,255,.4)'; g.fillRect(x-6,y+hh+2,ww+12,5); }
+          g.fillStyle = win; g.fillRect(x,y,ww,hh);
+          const gr = g.createLinearGradient(0,y,0,y+hh); gr.addColorStop(0,'rgba(255,255,255,.28)'); gr.addColorStop(1,'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(x,y,ww,hh);
+          g.fillStyle = frame; if (!curtain) bars(g,w); } }));
+      // roughness in green, metalness in blue
+      const orm = tex(g => { g.fillStyle = curtain ? 'rgb(0,120,90)' : 'rgb(0,235,0)'; g.fillRect(0,0,S,S);
+        for (const w of wins){ const [x,y,ww,hh] = w;
+          if (!curtain){ g.fillStyle = 'rgb(0,170,30)'; g.fillRect(x-4,y-4,ww+8,hh+6); }
+          g.fillStyle = curtain ? 'rgb(0,16,200)' : 'rgb(0,34,120)'; g.fillRect(x,y,ww,hh);
+          g.fillStyle = 'rgb(0,140,60)'; if (!curtain) bars(g,w); }
+        if (curtain) for (let f=0; f<4; f++){ g.fillStyle = 'rgb(0,150,70)'; g.fillRect(0,f*B,S,10); } });
+      const bump = tex(g => { g.fillStyle = '#808080'; g.fillRect(0,0,S,S);
+        if (!curtain){ g.fillStyle = '#707070'; for (let y=0;y<S;y+=16) g.fillRect(0,y,S,1); g.fillStyle = '#a8a8a8'; for (let f=0;f<4;f++) g.fillRect(0,f*B,S,4); }
+        for (const w of wins){ const [x,y,ww,hh] = w;
+          if (!curtain){ g.fillStyle = '#a0a0a0'; g.fillRect(x-4,y-4,ww+8,hh+6); g.fillStyle = '#d4d4d4'; g.fillRect(x-6,y+hh+2,ww+12,5); }
+          g.fillStyle = curtain ? '#6a6a6a' : '#262626'; g.fillRect(x,y,ww,hh); g.fillStyle = '#5a5a5a'; if (!curtain) bars(g,w); } });
+      return std(0xffffff,{map, roughnessMap:orm, metalnessMap:orm, bumpMap:bump, bumpScale:.05, roughness:1, metalness:1}); };
+    const PORTLAND = facadeOf('#ddd5c2','#5d6c7c','#cfc6b0'), BRICK = facadeOf('#9a5a44','#4d5866','#e0d8c8'), GLASS = facadeOf('#5b6d80','#4f6c86','#3a4654',true), CREAM = facadeOf('#e8e0cc','#66707c','#d8cfb8');
     const bmats = [PORTLAND, PORTLAND, CREAM, BRICK, GLASS];
-    const building = (x,z,w,d,h,mat,rot=0) => { const m = new THREE.Mesh(boxUV(w,h,d), mat); m.position.set(x,h/2,z); m.rotation.y = rot; fsc.add(m); if (!rot) solidCity(m, x-w/2,z-d/2,x+w/2,z+d/2); return m; };
+    const trims = [];   // plinth, string course and cornice for every building, instanced at the end of buildFree
+    const building = (x,z,w,d,h,mat,rot=0) => { const m = new THREE.Mesh(boxUV(w,h,d), mat); m.position.set(x,h/2,z); m.rotation.y = rot; fsc.add(m); if (!rot) solidCity(m, x-w/2,z-d/2,x+w/2,z+d/2); trims.push([x,z,w,d,h,rot,mat === GLASS]); return m; };
     const stone = std(0xe2dac6,{roughness:.85}), stoneDark = std(0xb8af9a), bronze = std(0x3f4a3a,{metalness:.5,roughness:.5}), goldM = std(0xd8b04a,{metalness:.8,roughness:.3,emissive:0x3a2a00});
     const grassTex = srgb(canvasTex(128,128,(g,w,h)=>{g.fillStyle='#5d8a3c';g.fillRect(0,0,w,h);for(let i=0;i<2600;i++){const v=rand();g.fillStyle=v<.5?'rgba(40,70,25,.35)':'rgba(140,180,90,.3)';g.fillRect(rand()*w,rand()*h,2,2);}}));
     grassTex.wrapS = grassTex.wrapT = THREE.RepeatWrapping; grassTex.repeat.set(1/6,1/6);
-    const grass = std(0xffffff,{map:grassTex,roughness:1}), paving = std(0xc9c2b2,{roughness:.9});
+    const grass = std(0xffffff,{map:grassTex,roughness:1}), paving = std(0xa39d90,{roughness:.9});
     // the Thames: the user's water texture tiling every 70 m, with a ripple normal map; both drift in update()
     const waterTex = new THREE.TextureLoader().load('assets/water.jpg'); waterTex.encoding = THREE.sRGBEncoding;
     waterTex.wrapS = waterTex.wrapT = THREE.RepeatWrapping; waterTex.repeat.set(1/70,1/70); waterTex.anisotropy = 8;
     const ripple = waterNormal.clone(); ripple.needsUpdate = true; ripple.repeat.set(1/16,1/16);
     const water = std(0xc4d2d4,{map:waterTex,normalMap:ripple,normalScale:new THREE.Vector2(.45,.45),roughness:.16,metalness:.25});
     // pavements: pale York stone slabs everywhere that isn't road, grass or water
-    const slabTex = srgb(canvasTex(256,256,(g,w,h)=>{g.fillStyle='#8f8b84';g.fillRect(0,0,w,h);for(let y=0;y<h;y+=32)for(let x=(y/32%2)*24;x<w+48;x+=48){const v=176+rand()*16;g.fillStyle=`rgb(${v},${v-3},${v-9})`;g.fillRect(x+1,y+1,46,30);}}));
+    const slabTex = srgb(canvasTex(256,256,(g,w,h)=>{g.fillStyle='#6c6964';g.fillRect(0,0,w,h);for(let y=0;y<h;y+=32)for(let x=(y/32%2)*24;x<w+48;x+=48){const v=138+rand()*22;g.fillStyle=`rgb(${v},${v-3},${v-8})`;g.fillRect(x+1,y+1,46,30);}for(let i=0;i<60;i++){g.fillStyle='rgba(40,35,30,.06)';g.beginPath();g.arc(rand()*w,rand()*h,3+rand()*9,0,Math.PI*2);g.fill();}}));
     slabTex.wrapS = slabTex.wrapT = THREE.RepeatWrapping; slabTex.repeat.set(1/4.8,1/4.8); slabTex.anisotropy = 8;
 
     // ground, river Thames, parks
@@ -1509,7 +1569,7 @@ function buildScene(){
       const poleIM = new THREE.InstancedMesh(poleGeo, std(0x15171b,{metalness:.5,roughness:.4}), lamps.length);
       const headIM = new THREE.InstancedMesh(new THREE.CylinderGeometry(.24,.16,.5,6), std(0xf6e7c0,{emissive:0x5a4a20,roughness:.3}), lamps.length);
       lamps.forEach(([x,z],i) => { d.rotation.set(0,0,0); d.position.set(x,0,z); d.updateMatrix(); poleIM.setMatrixAt(i,d.matrix); d.position.set(x,5.85,z); d.updateMatrix(); headIM.setMatrixAt(i,d.matrix); cityCol.push([x-.2,z-.2,x+.2,z+.2]); });
-      fsc.add(kerbIM, poleIM, headIM); }
+      kerbIM.userData.noCast = true; fsc.add(kerbIM, poleIM, headIM); }
     // zebra crossings with Belisha beacons
     { const zebraTex = canvasTex(64,16,(g,w,h)=>{ for (let x=0;x<w;x+=16){ g.fillStyle='#f4f3ee'; g.fillRect(x,0,8,h); } });
       const zebraMat = new THREE.MeshStandardMaterial({map:zebraTex,transparent:true,roughness:.6});
@@ -1545,7 +1605,7 @@ function buildScene(){
       const limbGeo = new THREE.CylinderGeometry(.09,.2,4.4,6); limbGeo.translate(0,2.2,0);
       const trunkIM = new THREE.InstancedMesh(trunkGeo, barkMat, n), limbIM = new THREE.InstancedMesh(limbGeo, barkMat, n*LIMBS);
       const coreIM = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(3.2,1), coreMat, n), cardIM = new THREE.InstancedMesh(new THREE.PlaneGeometry(5.6,4.2), leafMat, n*CARDS);
-      cardIM.visible = false;
+      cardIM.visible = false; cardIM.userData.cast = true;
       const d = new THREE.Object3D();
       spots.forEach(([x,z,s],i) => {
         const yaw = rand()*Math.PI*2;
@@ -1897,8 +1957,32 @@ function buildScene(){
       place();
     }
 
+    { const geo = new THREE.BoxGeometry(1,1,1), d = new THREE.Object3D(), plinth = [], course = [], cornice = [];
+      const make = (mat, list) => { const im = new THREE.InstancedMesh(geo, mat, list.length);
+        list.forEach(([x,y,z,sx,sy,sz,rot],i) => { d.position.set(x,y,z); d.rotation.set(0,rot,0); d.scale.set(sx,sy,sz); d.updateMatrix(); im.setMatrixAt(i, d.matrix); }); fsc.add(im); };
+      for (const [x,z,w,dd,h,rot,curtain] of trims){
+        plinth.push([x,.6,z,w+.3,1.2,dd+.3,rot]);
+        if (h >= 9 && !curtain) course.push([x,3,z,w+.45,.32,dd+.45,rot]);
+        if (h >= 9) cornice.push([x,h-.3,z,w+1.1,.6,dd+1.1,rot]); }
+      make(std(0x8a8478,{roughness:.9}), plinth); make(std(0xe4dccb,{roughness:.85}), course); make(std(0xd8d0bd,{roughness:.85}), cornice); }
+    // real shadows: lit, solid things cast and receive; flat ground layers, glass and unlit materials don't cast
+    fsc.traverse(o => { if (!o.isMesh || Array.isArray(o.material)) return; const m = o.material;
+      if (m === outlineMat || m.isMeshBasicMaterial || m.isShaderMaterial || m.isSpriteMaterial) return;
+      o.receiveShadow = true;
+      // sky light: modest on matt surfaces so they keep their colour, stronger on metal, paint and glass
+      if (m.isMeshStandardMaterial) m.envMapIntensity = m.metalnessMap ? .6 : m.metalness >= .5 ? 1 : .45;
+      const flatGeo = /^(Plane|Circle|Shape)/.test(o.geometry.type);
+      o.castShadow = o.userData.cast || (!flatGeo && !m.transparent && !o.userData.noCast); });
+
     return {
       scene: fsc,
+      setQuality(q){
+        const on = q !== 'Low', size = q === 'Ultra' ? 4096 : 2048; shadowR = q === 'Ultra' ? 110 : 75;
+        sun.castShadow = on;
+        if (sun.shadow.mapSize.x !== size){ sun.shadow.mapSize.set(size,size); if (sun.shadow.map){ sun.shadow.map.dispose(); sun.shadow.map = null; } }
+        const c = sun.shadow.camera; c.left = c.bottom = -shadowR; c.right = c.top = shadowR; c.updateProjectionMatrix();
+        shadow.visible = !on;   // the soft blob under Tommy only stands in when there are no real shadows
+      },
       start(wake){
         state = wake ? 'wake' : 'walk'; stateT = 0;
         if (level === 'street') travel();
@@ -1925,7 +2009,8 @@ function buildScene(){
         waterTex.offset.set(t*.0025, t*.008); ripple.offset.set(-t*.018, t*.011);
         // street life runs round wherever Tommy is, so it's busy below the penthouse too
         { const sx = level === 'street' ? P.x : P0.x + P.x, sz = level === 'street' ? P.z : P0.z + P.z;
-          life.update(Math.min(dt, .1), sx, sz, level === 'street' ? P.x : 1e5, level === 'street' ? P.z : 1e5); }
+          life.update(Math.min(dt, .1), sx, sz, level === 'street' ? P.x : 1e5, level === 'street' ? P.z : 1e5);
+          skyMat.uniforms.uTime.value = t; followSun(sx, level === 'street' ? 0 : P0.y, sz); }
         // through the eyepiece, Tommy and the telescope itself would only block the view
         tele.visible = tommy.root.visible = state !== 'scope';
         if (level === 'street') for (const g of guards) idle(g, t, dt, [0,-.3,.3]);
@@ -2037,8 +2122,13 @@ function buildScene(){
   const rig = {pos:new THREE.Vector3(), target:new THREE.Vector3(), mx:0, my:0, sx:0, sy:0};
   function resize(){
     const w = innerWidth, h = innerHeight, a = w/h;
-    const pr = settings.quality === 'High' ? Math.min(devicePixelRatio || 1, 2) : 1;
+    const q = settings.quality, pr = q === 'Ultra' ? Math.min(devicePixelRatio || 1, 3) : q === 'High' ? Math.min(devicePixelRatio || 1, 2) : 1;
     renderer.setPixelRatio(pr); renderer.setSize(w, h, false);
+    // sun shadows (free roam) are off on Low; switching them means recompiling every lit material
+    const shadows = q !== 'Low';
+    if (renderer.shadowMap.enabled !== shadows){ renderer.shadowMap.enabled = shadows;
+      for (const sc of [scene, story.scene, story.home, free && free.scene]) if (sc) sc.traverse(o => [].concat(o.material || []).forEach(m => { m.needsUpdate = true; })); }
+    if (free) free.setQuality(q);
     camera.aspect = a;
     if (mode !== 'menu'){ camera.updateProjectionMatrix(); return; }
     if (a < .9){ camera.fov = 62; rig.pos.set(1.6,1.45,7.4); rig.target.set(2.6,4.2,-24); }
@@ -2077,6 +2167,8 @@ function buildScene(){
   let asleep = false;   // after Quit: stop drawing until the player starts again
   function loop(now){
     if (asleep){ last = now; requestAnimationFrame(loop); return; }
+    // daylight London needs less exposure than the night-time menu and cutscene
+    renderer.toneMappingExposure = mode === 'free' ? .8 : 1.15;
     if (mode === 'story'){
       const dt = Math.min(.05,(now-last)/1000); last = now; storyT += dt;
       story.update(storyT, dt);
@@ -2118,7 +2210,7 @@ const MENUS = {
     {label:'Dialogue Volume', kind:'bar', key:'voice', desc:'Volume of the voices in Story Mode cutscenes.'},
     {label:'Fullscreen', kind:'fs', desc:'Fill the whole screen.'},
     {label:'Camera Motion', kind:'toggle', key:'motion', desc:'Gentle camera drift, traffic and the turning London Eye.'},
-    {label:'Graphics Quality', kind:'choice', key:'quality', options:['Low','High'], desc:'Low renders at a lower resolution for slower computers.'},
+    {label:'Graphics Quality', kind:'choice', key:'quality', options:['Low','High','Ultra'], desc:'Low: faster, no shadows. High: sun shadows at full resolution. Ultra: sharper shadows over a wider area, at your screen\'s full resolution.'},
     {label:'Back', desc:'Return to the main menu.', act:()=>back()},
   ]},
   credits:{title:'Credits', rows:[
