@@ -123,6 +123,12 @@ body.season-halloween{--accent:#FF7A1A;--accent-deep:#4A1F7A;--accent-light:#FFB
 body.season-halloween .banner::before{content:"";position:absolute;inset:0;z-index:1;pointer-events:none;
   background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 18'%3E%3Cpath d='M20 6c1-3 2-3 2-3l1 3c3-3 9-4 17-1-4 1-6 4-6 7-3-2-6-2-9 0-1-2-3-3-5-3s-4 1-5 3c-3-2-6-2-9 0 0-3-2-6-6-7 8-3 14-2 17 1l1-3s1 0 2 3z' fill='%23111'/%3E%3C/svg%3E") no-repeat,url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 18'%3E%3Cpath d='M20 6c1-3 2-3 2-3l1 3c3-3 9-4 17-1-4 1-6 4-6 7-3-2-6-2-9 0-1-2-3-3-5-3s-4 1-5 3c-3-2-6-2-9 0 0-3-2-6-6-7 8-3 14-2 17 1l1-3s1 0 2 3z' fill='%23111'/%3E%3C/svg%3E") no-repeat;background-size:34px 15px,22px 10px;animation:bats 7s linear infinite}
 @keyframes bats{0%{background-position:-12% 70%,-20% 20%}50%{background-position:55% 15%,45% 65%}100%{background-position:112% 60%,118% 10%}}
+body.season-easter{--accent:#B17BEA;--accent-deep:#6A48B5;--accent-light:#FFD3E6}
+body.season-easter .banner::before{content:"";position:absolute;left:0;right:0;top:0;height:16px;z-index:1;pointer-events:none;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 72 16'%3E%3Cpath d='M0 1.5H72' stroke='%23333' stroke-width='1'/%3E%3Cpath d='M2 1.5h14l-7 13z' fill='%23FFB3CF'/%3E%3Cpath d='M20 1.5h14l-7 13z' fill='%23FFE58A'/%3E%3Cpath d='M38 1.5h14l-7 13z' fill='%23A8EBC8'/%3E%3Cpath d='M56 1.5h14l-7 13z' fill='%23A9CCFF'/%3E%3C/svg%3E") 0 0/72px 16px repeat-x}
+body.season-bonfire{--accent:#FF4A2E;--accent-deep:#3B1460;--accent-light:#FFC64D}
+body.season-bonfire .banner::before{content:"";position:absolute;inset:0;z-index:1;pointer-events:none;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-20 -20 40 40'%3E%3Cg stroke='%23FFD36A' stroke-width='1.6' stroke-linecap='round'%3E%3Cpath d='M0-7V-18M0 7V18M-7 0H-18M7 0H18M5-5L13-13M-5 5L-13 13M5 5L13 13M-5-5L-13-13'/%3E%3C/g%3E%3Cg fill='%23FF6A4D'%3E%3Ccircle cy='-18' r='1.6'/%3E%3Ccircle cy='18' r='1.6'/%3E%3Ccircle cx='-18' r='1.6'/%3E%3Ccircle cx='18' r='1.6'/%3E%3C/g%3E%3C/svg%3E") no-repeat 80% 35%,url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-20 -20 40 40'%3E%3Cg stroke='%23FFD36A' stroke-width='1.6' stroke-linecap='round'%3E%3Cpath d='M0-7V-18M0 7V18M-7 0H-18M7 0H18M5-5L13-13M-5 5L-13 13M5 5L13 13M-5-5L-13-13'/%3E%3C/g%3E%3Cg fill='%23FF6A4D'%3E%3Ccircle cy='-18' r='1.6'/%3E%3Ccircle cy='18' r='1.6'/%3E%3Ccircle cx='-18' r='1.6'/%3E%3Ccircle cx='18' r='1.6'/%3E%3C/g%3E%3C/svg%3E") no-repeat 93% 75%;animation:fw-burst 2.4s ease-out infinite}
+@keyframes fw-burst{0%{background-size:0 0,0 0;opacity:1}45%{background-size:56px 56px,0 0;opacity:1}70%{background-size:64px 64px,40px 40px;opacity:.85}100%{background-size:70px 70px,48px 48px;opacity:0}}
 @media (prefers-reduced-motion:reduce){.banner::after,.banner::before,body.wx-storm .banner{animation:none}}
 
 /* bottom right prompts */
@@ -385,11 +391,22 @@ const SKY = {phase:'night', el:-30, az:0, kind:'clear', wxKind:'clear', wx:null,
 // special seasons, by the London date: Christmas runs 1 December to Twelfth Night (6 January) and snows day and
 // night whatever the real weather; 31 October dresses the menu for Halloween
 function seasonNow(date){
-  const p = {}; new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/London',month:'numeric',day:'numeric'}).formatToParts(date).forEach(x => p[x.type] = +x.value);
+  const p = {}; new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/London',year:'numeric',month:'numeric',day:'numeric'}).formatToParts(date).forEach(x => p[x.type] = +x.value);
   if (p.month === 12 || (p.month === 1 && p.day <= 6)) return 'christmas';
   if (p.month === 10 && p.day === 31) return 'halloween';
-  return '';
+  if (p.month === 11 && p.day === 5) return 'bonfire';
+  // the Easter weekend, Good Friday to Easter Monday (Easter Sunday by the Gregorian computus)
+  const y = p.year, a = y%19, b = Math.floor(y/100), c = y%100, d = Math.floor(b/4), e = b%4, f = Math.floor((b+8)/25), g = Math.floor((b-f+1)/3),
+    h = (19*a+b-d-g+15)%30, i = Math.floor(c/4), k = c%4, l = (32+2*e+2*i-h-k)%7, m = Math.floor((a+11*h+22*l)/451), n = h+l-7*m+114;
+  const off = (Date.UTC(y, p.month-1, p.day) - Date.UTC(y, Math.floor(n/31)-1, n%31+1))/864e5;
+  return off >= -2 && off <= 1 ? 'easter' : '';
 }
+const SEASONS = {
+  christmas:{greet:'Merry Christmas', text:"Snow over Westminster. Season's greetings from Tommy."},
+  halloween:{name:'Halloween', icon:'pumpkin', greet:'Happy Halloween', text:"Something's stirring on the Embankment tonight."},
+  easter:{name:'Easter', icon:'egg', greet:'Happy Easter', text:'Spring has sprung on the Embankment.'},
+  bonfire:{name:'Bonfire Night', icon:'firework', greet:'Bonfire Night', text:'Remember, remember the fifth of November.'},
+};
 let seasonGreeted = '';
 const PHASE_NAMES = {dawn:'Dawn', day:'Day', dusk:'Dusk', twilight:'Twilight', night:'Night'};
 // solar elevation and azimuth (degrees, azimuth clockwise from north) over Westminster
@@ -425,6 +442,8 @@ const WX_ICONS = (() => {
     drizzle:cloud(4) + '<path d="M9 18.5v1M13 19.5v1M17 18.5v1"/>',
     snow:cloud(4) + '<path d="M9 19h.01M13 21h.01M17 19h.01M11 22h.01M15 22h.01"/>',
     storm:cloud(4) + '<path d="M13 14l-3 4h4l-3 4"/>',
+    egg:'<path d="M12 3c-3.5 0-6.5 5.5-6.5 10a6.5 6.5 0 0 0 13 0C18.5 8.5 15.5 3 12 3z"/><path d="M6.3 11.6l2.2 1.4 2-1.4 2 1.4 2-1.4 2.2 1.4"/>',
+    firework:'<path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4M5.3 5.3l2.8 2.8M15.9 15.9l2.8 2.8M18.7 5.3l-2.8 2.8M8.1 15.9l-2.8 2.8"/><circle cx="12" cy="12" r="1.6"/>',
     pumpkin:'<path d="M12 7c-4.5 0-8 2.8-8 6.5S7.5 20 12 20s8-2.8 8-6.5S16.5 7 12 7z"/><path d="M12 7V4.5l2-1.3"/><path d="M8.5 12l1.5 1.5L11.5 12M12.5 12l1.5 1.5 1.5-1.5M9 16.5q3 1.8 6 0"/>',
   };
 })();
@@ -434,13 +453,13 @@ function updateSky(){
   let [kind, label] = SKY.wx ? weatherOf(SKY.wx.code) : ['clear', ''];
   const season = seasonNow(new Date()), wxKind = kind;
   if (season === 'christmas'){ kind = 'snow'; label = 'Christmas snow'; }
-  if (season === 'halloween') label = [label, 'Halloween'].filter(Boolean).join(' · ');
+  else if (season) label = [label, SEASONS[season].name].filter(Boolean).join(' · ');
   Object.assign(SKY, {el, az, phase, kind, wxKind, season});   // kind is what the menu shows; wxKind is the real weather
   const cl = document.body.classList;
   [...cl].forEach(c => { if (/^(phase|wx|season)-/.test(c)) cl.remove(c); });
   cl.add('phase-' + phase, 'wx-' + kind); if (season) cl.add('season-' + season);
   const dark = phase === 'night' || phase === 'twilight';
-  const icon = season === 'halloween' ? 'pumpkin' : kind === 'clear' ? (dark ? 'moon' : 'sun') : kind === 'partly' ? (dark ? 'partlyMoon' : 'partlySun') : kind;
+  const icon = SEASONS[season] && SEASONS[season].icon ? SEASONS[season].icon : kind === 'clear' ? (dark ? 'moon' : 'sun') : kind === 'partly' ? (dark ? 'partlyMoon' : 'partlySun') : kind;
   $('wxIco').innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${WX_ICONS[icon]}</svg>`;
   $('wxText').textContent = [PHASE_NAMES[phase], label, SKY.wx ? Math.round(SKY.wx.temp) + '°C' : ''].filter(Boolean).join(' · ');
   if (scene3d) scene3d.atmosphere(SKY);
@@ -449,8 +468,7 @@ function updateSky(){
   if (season && season !== seasonGreeted){
     seasonGreeted = season;
     setTimeout(() => {
-      $('feedTitle').textContent = season === 'christmas' ? 'Merry Christmas' : 'Happy Halloween';
-      notify(season === 'christmas' ? 'Snow over Westminster. Season\'s greetings from Tommy.' : 'Something\'s stirring on the Embankment tonight.');
+      $('feedTitle').textContent = SEASONS[season].greet; notify(SEASONS[season].text);
       setTimeout(() => { $('feedTitle').textContent = 'Tommy'; }, 4400);
     }, 1500);
   }
@@ -778,6 +796,7 @@ function buildScene(){
     setSeason(st.season || '');
     T.snowCover = st.season === 'christmas' ? 1 : kind === 'snow' ? .5 : 0;
     T.spooky = st.season === 'halloween' ? 1 : 0;
+    if (st.season === 'bonfire'){ T.fogDen *= 1.35; T.glow.lerp(new THREE.Color(0xff7a30), .3); }
     if (T.spooky){ T.glow.lerp(new THREE.Color(0xff6a20), .6); T.hor.lerp(new THREE.Color(0x5a2a6a), .35); T.top.lerp(new THREE.Color(0x1a0a2a), .3);
       T.fog.lerp(new THREE.Color(0x3a2448), .5); T.fogDen *= 1.6; T.moon = Math.max(T.moon, T.stars > .3 ? 1 : T.moon); }
     // the fog colour is linear, unlike the sky's
@@ -838,6 +857,32 @@ function buildScene(){
       const cx = b.far ? BX : 6, cz = b.far ? BZ + 12 : -10;
       b.g.position.set(cx + Math.cos(b.a)*b.r, b.h + Math.sin(b.a*2 + b.ph)*(b.far ? 6 : 1.5), cz + Math.sin(b.a)*b.r*(b.far ? .6 : .5));
       b.g.rotation.set(0, -b.a, 0); const f = Math.sin(t*14 + b.ph)*.8; b.wl.rotation.z = f; b.wr.rotation.z = -f; }
+    // Easter blossom drifting down
+    if (easter.visible){ const a = petals.geometry.attributes.position, q = a.array;
+      for (let i=0;i<q.length;i+=3){ q[i+1] -= .35*dt; q[i] += (Math.sin(t*.9 + i) *.25 + .15)*dt; if (q[i+1] < 0){ q[i+1] = 11 + rand(); q[i] = -14 + rand()*32; } if (q[i] > 18) q[i] -= 32; }
+      a.needsUpdate = true; }
+    // Bonfire Night: the fire, its smoke, the sparkler and, once it's dark enough, fireworks
+    if (bonfire.visible){
+      for (const fl of fire.flames){ const k = 1 + Math.sin(t*9 + fl.ph)*.12 + (rand()-.5)*.1; fl.f.scale.set(1 + (rand()-.5)*.06, k, 1 + (rand()-.5)*.06); fl.f.rotation.y += dt*(1.5 + fl.ph*.2); }
+      const fk = .85 + Math.sin(t*13)*.08 + (rand()-.5)*.12; fire.light.intensity = 2.4*fk*(.4 + .6*atmCur.lights); fire.glow.material.opacity = .55*fk + .3*atmCur.lights;
+      { const a = smoke.geometry.attributes.position, q = a.array; for (let i=0;i<q.length;i+=3){ q[i+1] += .9*dt; q[i] += (.25 + Math.sin(t + i)*.1)*dt; if (q[i+1] > 11){ q[i+1] = 1.5; q[i] = (rand()-.5)*.6; q[i+2] = (rand()-.5)*.6; } } a.needsUpdate = true; }
+      { const a = sparks.geometry.attributes.position, q = a.array; for (let i=0;i<q.length;i+=3){ const r = rand()*.16, th = rand()*7, ph = rand()*3.2; q[i] = Math.cos(th)*Math.sin(ph)*r; q[i+1] = Math.cos(ph)*r; q[i+2] = Math.sin(th)*Math.sin(ph)*r; } a.needsUpdate = true; }
+      const dark = atmCur.lights > .3;
+      for (let n=0;n<fw.N;n++){ const b = fw.b[n], o = n*fw.PER*3; b.t += dt;
+        if (b.state === 'wait'){ for (let i=0;i<fw.PER*3;i++) fw.col[o+i] = 0;
+          if (b.t > 0 && dark){ b.state = 'rise'; b.t = 0; b.x = -30 + rand()*230; b.z = -140 - rand()*130; b.y = 0; b.top = 60 + rand()*70; b.c = fw.PAL[Math.floor(rand()*fw.PAL.length)]; } continue; }
+        if (b.state === 'rise'){ b.y = b.top*Math.min(1, b.t/1.3); fw.pos[o] = b.x; fw.pos[o+1] = b.y; fw.pos[o+2] = b.z; fw.col[o] = 1; fw.col[o+1] = .85; fw.col[o+2] = .6;
+          if (b.t >= 1.3){ b.state = 'burst'; b.t = 0; const sp = 30 + rand()*18;
+            for (let i=0;i<fw.PER;i++){ const u = rand()*2 - 1, th = rand()*Math.PI*2, r = Math.sqrt(1 - u*u), k = sp*(.75 + rand()*.25);
+              b.vel[i*3] = r*Math.cos(th)*k; b.vel[i*3+1] = u*k; b.vel[i*3+2] = r*Math.sin(th)*k; fw.pos[o+i*3] = b.x; fw.pos[o+i*3+1] = b.y; fw.pos[o+i*3+2] = b.z; } }
+          continue; }
+        // burst: sparks fly out, slow, fall and fade over 2.4 s
+        const fade = Math.max(0, 1 - b.t/2.4), f = Math.pow(fade, 1.3)*1.5;
+        for (let i=0;i<fw.PER;i++){ const j = o + i*3, v = i*3; b.vel[v] *= 1 - 1.6*dt; b.vel[v+1] = b.vel[v+1]*(1 - 1.6*dt) - 9*dt; b.vel[v+2] *= 1 - 1.6*dt;
+          fw.pos[j] += b.vel[v]*dt; fw.pos[j+1] += b.vel[v+1]*dt; fw.pos[j+2] += b.vel[v+2]*dt;
+          const tw = rand() < .15 ? 1.6 : 1; fw.col[j] = b.c[0]*f*tw; fw.col[j+1] = b.c[1]*f*tw; fw.col[j+2] = b.c[2]*f*tw; }
+        if (b.t > 2.4){ b.state = 'wait'; b.t = -(rand()*1.6); } }
+      fw.geo.attributes.position.needsUpdate = true; fw.geo.attributes.color.needsUpdate = true; }
     // Christmas lights twinkle
     if (xmas.visible) for (let i=0;i<xmasLights.length;i++) xmasLights[i].m.opacity *= .8 + .2*Math.sin(t*3 + i*1.7);
     // precipitation
@@ -1172,8 +1217,93 @@ function buildScene(){
     part(new THREE.CylinderGeometry(.18,.185,.06,24), toon(0x7a3fd0), witchHat, [0,.04,0], [0,0,0], [1,1,1], .006);
     part(new THREE.ConeGeometry(.175,.48,24), toon(0x17141f), witchHat, [0,.27,-.03], [-.2,0,.06], [1,1,1], .012);
     santaHat.visible = witchHat.visible = false; }
+  // Easter: decorated eggs (on the wall, on the paving and in a basket by Tommy), planters of daffodils and tulips, pastel
+  // bunting between the lamps, blossom petals drifting down, and bunny ears for Tommy
+  const easter = new THREE.Group(), bonfire = new THREE.Group(); easter.visible = bonfire.visible = false; scene.add(easter, bonfire);
+  let petals;
+  { const pastel = ['#ffb3cf','#ffe58a','#a8ebc8','#a9ccff','#d9b8ff','#ffcf9e'];
+    const eggTex = pastel.map((c,i) => srgb(canvasTex(128,64,(g,w,h) => { g.fillStyle = c; g.fillRect(0,0,w,h);
+      const c2 = pastel[(i+2)%6], c3 = '#ffffff';
+      if (i%3 === 0){ g.fillStyle = c2; for (let y=10;y<h;y+=18) g.fillRect(0,y,w,6); }
+      else if (i%3 === 1){ g.strokeStyle = c2; g.lineWidth = 4; g.beginPath(); for (let x=0;x<=w;x+=8) g.lineTo(x, h/2 + (x/8%2 ? -8 : 8)); g.stroke(); }
+      else { g.fillStyle = c3; for (let k=0;k<26;k++){ g.beginPath(); g.arc(rand()*w, rand()*h, 3, 0, 7); g.fill(); } } })));
+    const eggGeo = new THREE.SphereGeometry(.1,18,14); eggGeo.scale(1,1.35,1);
+    const egg = (x,y,z,i,parent=easter,s=1) => { const e = new THREE.Mesh(eggGeo, std(0xffffff,{map:eggTex[i%6],roughness:.45})); e.position.set(x,y+.135*s,z); e.scale.setScalar(s); e.rotation.set((rand()-.5)*.4, rand()*6, (rand()-.5)*.4); parent.add(e); };
+    [[-6,0],[-3.2,1],[-.6,2],[7.9,3],[11,4],[15.5,5],[19,0]].forEach(([x,i]) => egg(x, 1.17, -3.9, i));
+    [[3.6,.9,1],[1.2,1.6,2],[-.9,.4,3],[5.6,1.9,4]].forEach(([x,z,i]) => egg(x, 0, z, i));
+    // a wicker basket of eggs by Tommy
+    const basket = new THREE.Group(); basket.position.set(4.4,0,.7); easter.add(basket);
+    const wicker = std(0xb07a3a,{roughness:.9});
+    { const b = new THREE.Mesh(new THREE.CylinderGeometry(.3,.22,.22,18,1,true), wicker); b.material.side = THREE.DoubleSide; b.position.y = .11; basket.add(b);
+      const bot = new THREE.Mesh(new THREE.CircleGeometry(.22,18), wicker); bot.rotation.x = -Math.PI/2; bot.position.y = .01; basket.add(bot);
+      const handle = new THREE.Mesh(new THREE.TorusGeometry(.28,.025,8,24,Math.PI), wicker); handle.position.y = .2; basket.add(handle);
+      const grass = new THREE.Mesh(new THREE.CylinderGeometry(.27,.27,.04,18), std(0x8fd16a,{roughness:1})); grass.position.y = .17; basket.add(grass);
+      for (let k=0;k<6;k++){ const a = k/6*Math.PI*2; egg(Math.cos(a)*.15, .12, Math.sin(a)*.15, k, basket, .85); } }
+    // planters of daffodils and tulips along the foot of the wall
+    const planter = std(0x2f3a33,{roughness:.8}), stemM = std(0x3f8a3a,{roughness:.8}), daff = std(0xffd23a,{roughness:.6}), trumpet = std(0xff9a1a,{roughness:.6});
+    const tulipCols = [0xe8344a,0xff7ab0,0x9a4ad8,0xffffff].map(c => std(c,{roughness:.55}));
+    for (const px of [-4.6,.6,8.6,14.2]){ box(1.8,.42,.5,planter,px,.21,-3.25,easter); box(1.7,.04,.42,std(0x4a3420,{roughness:1}),px,.43,-3.25,easter);
+      for (let k=0;k<9;k++){ const x = px - .75 + k*.19, z = -3.25 + (k%2 ? .08 : -.08), h = .32 + rand()*.12, tul = k%3 === 1;
+        const st = new THREE.Mesh(new THREE.CylinderGeometry(.012,.012,h,5), stemM); st.position.set(x,.43+h/2,z); easter.add(st);
+        if (tul){ const t = new THREE.Mesh(new THREE.SphereGeometry(.055,10,8), tulipCols[k%4]); t.scale.set(1,1.3,1); t.position.set(x,.45+h,z); easter.add(t); }
+        else { const pet = new THREE.Mesh(new THREE.CylinderGeometry(.075,.075,.012,6), daff); pet.rotation.x = Math.PI/2.3; pet.position.set(x,.45+h,z+.01); easter.add(pet);
+          const tr = new THREE.Mesh(new THREE.CylinderGeometry(.025,.035,.06,8), trumpet); tr.rotation.x = Math.PI/2.3; tr.position.set(x,.45+h,z+.04); easter.add(tr); } } }
+    // pastel bunting, sagging between the lamp posts
+    const flags = [], fcol = [], rope = [], pal = [[1,.7,.81],[1,.9,.54],[.66,.92,.78],[.66,.8,1],[.85,.72,1]];
+    for (let l=0; l<lampXs.length-1; l++) for (let i=0;i<=16;i++){ const f = i/16, x = lampXs[l] + (lampXs[l+1]-lampXs[l])*f, y = 1.17 + 3.9 - Math.sin(f*Math.PI)*.8;
+      if (i) rope.push(x - (lampXs[l+1]-lampXs[l])/16, 1.17 + 3.9 - Math.sin((i-1)/16*Math.PI)*.8, -3.9, x, y, -3.9);
+      if (i && i < 16){ flags.push(x-.2,y,-3.88, x+.2,y,-3.88, x,y-.34,-3.88); const c = pal[(i+l)%5]; for (let v=0;v<3;v++) fcol.push(...c); } }
+    const fg = new THREE.BufferGeometry(); fg.setAttribute('position', new THREE.Float32BufferAttribute(flags,3)); fg.setAttribute('color', new THREE.Float32BufferAttribute(fcol,3)); fg.computeVertexNormals();
+    easter.add(new THREE.Mesh(fg, new THREE.MeshStandardMaterial({vertexColors:true, side:THREE.DoubleSide, roughness:.8})));
+    const rg = new THREE.BufferGeometry(); rg.setAttribute('position', new THREE.Float32BufferAttribute(rope,3)); easter.add(new THREE.LineSegments(rg, new THREE.LineBasicMaterial({color:0x333333})));
+    // blossom petals drifting through
+    const PN = 260, pp = new Float32Array(PN*3); for (let i=0;i<PN;i++){ pp[i*3] = -14 + rand()*32; pp[i*3+1] = rand()*12; pp[i*3+2] = -8 + rand()*14; }
+    const pg = new THREE.BufferGeometry(); pg.setAttribute('position', new THREE.BufferAttribute(pp,3));
+    petals = new THREE.Points(pg, new THREE.PointsMaterial({map:glowTex, color:0xffc8dc, size:.12, transparent:true, depthWrite:false})); petals.frustumCulled = false; easter.add(petals); }
+  // Bonfire Night: a bonfire with flickering flames and smoke where the Christmas tree stands, fireworks bursting over the
+  // river after dark (on the night Guy Fawkes tried to blow up Parliament, across the water), and a sparkler for Tommy
+  const fire = {flames:[], light:new THREE.PointLight(0xff7a30, 0, 14, 2)};
+  fire.light.position.set(6.4,1.4,-1.6); scene.add(fire.light);
+  let smoke, fw, sparks;
+  { const g = new THREE.Group(); g.position.set(6.4,0,-1.6); bonfire.add(g);
+    const stoneM = std(0x55585e,{roughness:.9}), logM = std(0x4a3222,{roughness:.9});
+    for (let k=0;k<11;k++){ const a = k/11*Math.PI*2, st = new THREE.Mesh(new THREE.DodecahedronGeometry(.16), stoneM); st.position.set(Math.cos(a)*.85,.1,Math.sin(a)*.85); st.rotation.set(rand(),rand(),rand()); g.add(st); }
+    for (let k=0;k<7;k++){ const a = k/7*Math.PI*2, l = new THREE.Mesh(new THREE.CylinderGeometry(.06,.08,1.5,7), logM); l.position.set(Math.cos(a)*.28,.6,Math.sin(a)*.28); l.rotation.set(Math.sin(a)*.42,0,-Math.cos(a)*.42); g.add(l); }
+    [[0xff4a10,.55,1.5],[0xff8a20,.42,1.2],[0xffc040,.28,.9],[0xff6a18,.36,1.1],[0xffd870,.18,.6]].forEach(([c,r,h],i) => {
+      const f = new THREE.Mesh(new THREE.ConeGeometry(r,h,10,1,true), new THREE.MeshBasicMaterial({color:c, transparent:true, opacity:.85, blending:THREE.AdditiveBlending, depthWrite:false, side:THREE.DoubleSide}));
+      f.position.set((i%2 ? .12 : -.1)*(i>2), h/2 + .15, (i===3 ? .12 : 0)); g.add(f); fire.flames.push({f, h, ph:rand()*7}); });
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex, color:0xff8a30, transparent:true, opacity:.8, blending:THREE.AdditiveBlending, depthWrite:false})); glow.position.set(0,1,0); glow.scale.set(5,5,1); g.add(glow); fire.glow = glow;
+    // smoke rising from the fire
+    const SM = 70, sp = new Float32Array(SM*3); for (let i=0;i<SM;i++){ sp[i*3] = (rand()-.5)*.6; sp[i*3+1] = 1.5 + rand()*9; sp[i*3+2] = (rand()-.5)*.6; }
+    const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.BufferAttribute(sp,3));
+    smoke = new THREE.Points(sg, new THREE.PointsMaterial({map:glowTex, color:0x8a8a90, size:1.6, transparent:true, opacity:.28, depthWrite:false})); smoke.frustumCulled = false; g.add(smoke);
+    // fireworks: a pool of rockets that rise over the river (clear of the menu panel), burst into a sphere of coloured
+    // sparks, fall and fade
+    const N = 7, PER = 110, pos = new Float32Array(N*PER*3), col = new Float32Array(N*PER*3);
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos,3)); geo.setAttribute('color', new THREE.BufferAttribute(col,3));
+    const pts = new THREE.Points(geo, new THREE.PointsMaterial({map:glowTex, size:4.6, vertexColors:true, transparent:true, blending:THREE.AdditiveBlending, depthWrite:false, fog:false}));
+    pts.frustumCulled = false; bonfire.add(pts);
+    const PAL = [[1,.25,.2],[1,.8,.25],[.35,1,.45],[.4,.65,1],[1,.4,.9],[1,1,1],[.7,.4,1]];
+    fw = {N, PER, pos, col, geo, b:Array.from({length:N}, (_,i) => ({state:'wait', t:-i*.7 - rand(), vel:new Float32Array(PER*3), c:PAL[0], x:0, y:0, z:0, top:80})), PAL};
+    // Tommy's sparkler, held up in his hand, spitting sparks
+    const stick = new THREE.Group(); stick.position.set(0,-.53,.02); tommyRig.arms[1].add(stick); fire.stick = stick;
+    const rod = new THREE.Mesh(new THREE.CylinderGeometry(.006,.006,.5,5), std(0x8a8a8a,{metalness:.6})); rod.rotation.x = Math.PI/2; rod.position.z = .22; stick.add(rod);
+    const SP = 40, spp = new Float32Array(SP*3), sgeo = new THREE.BufferGeometry(); sgeo.setAttribute('position', new THREE.BufferAttribute(spp,3));
+    sparks = new THREE.Points(sgeo, new THREE.PointsMaterial({map:glowTex, color:0xffe2a0, size:.07, transparent:true, blending:THREE.AdditiveBlending, depthWrite:false}));
+    sparks.position.z = .46; sparks.frustumCulled = false; stick.add(sparks); stick.visible = false; }
+  // bunny ears for Easter
+  const bunnyEars = new THREE.Group();
+  { bunnyEars.position.set(0,.3,-.02); tommyRig.head.add(bunnyEars);
+    part(new THREE.TorusGeometry(.2,.014,6,28,Math.PI), toon(0xffb3cf), bunnyEars, [0,0,0], [0,0,0], [1,1,1], .006);
+    for (const sx of [-1,1]){ const e = new THREE.Group(); e.position.set(sx*.09,.16,0); e.rotation.z = -sx*.22; bunnyEars.add(e);
+      part(new THREE.SphereGeometry(.06,14,10), toon(0xf8f6f2), e, [0,.12,0], [0,0,0], [.75,2.4,.4], .01);
+      part(new THREE.SphereGeometry(.035,12,8), toon(0xffa8c4), e, [0,.12,.02], [0,0,0], [.6,2.6,.3], 0); }
+    bunnyEars.visible = false; }
   function setSeason(sz){
     season = sz; xmas.visible = santaHat.visible = sz === 'christmas'; hallow.visible = witchHat.visible = sz === 'halloween';
+    easter.visible = bunnyEars.visible = sz === 'easter'; bonfire.visible = fire.stick.visible = sz === 'bonfire';
+    tommyRig.arms[1].rotation.x = sz === 'bonfire' ? -.95 : 0;   // the sparkler arm held up
+    if (sz !== 'bonfire') fire.light.intensity = 0;
   }
 
   /* hex colours are written as sRGB; convert once to the linear space the renderer works in */
