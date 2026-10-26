@@ -2778,6 +2778,15 @@ function buildScene(){
               const nx = d > 1e-4 ? dx/d : 1, nz = d > 1e-4 ? dz/d : 0, push = (PED - d)/2;
               shove(a, nx, nz, push); shove(b, -nx, -nz, push); } }
         },
+        // a car that has moved into Tommy nudges him out to its nearest side: the push (world x, z), or null
+        pushOut(x,z,r){ let ox = 0, oz = 0;
+          for (const a of cars){ if (!a.g.visible) continue;
+            const dx = x-a.g.position.x, dz = z-a.g.position.z, c = Math.cos(a.g.rotation.y), s = Math.sin(a.g.rotation.y);
+            const lx = dx*c - dz*s, lz = dx*s + dz*c, hw = (a.bus ? 1.3 : .95) + r, hl = a.len/2 + r;
+            if (Math.abs(lx) >= hw || Math.abs(lz) >= hl) continue;
+            let mx = 0, mz = 0; if (hw - Math.abs(lx) < hl - Math.abs(lz)) mx = Math.sign(lx || 1)*(hw - Math.abs(lx) + .02); else mz = Math.sign(lz || 1)*(hl - Math.abs(lz) + .02);
+            ox += mx*c + mz*s; oz += -mx*s + mz*c; }
+          return ox || oz ? [ox, oz] : null; },
         // Tommy can't walk through cars or people
         blocks(x,z,r){
           for (const a of cars){ if (!a.g.visible) continue; const dx = x-a.g.position.x, dz = z-a.g.position.z, yaw = a.g.rotation.y, c = Math.cos(yaw), s = Math.sin(yaw);
@@ -2786,7 +2795,8 @@ function buildScene(){
         },
       };
     })();
-    const hitsCity = (x,z,r) => hitsStatic(x,z,r) || life.blocks(x,z,r) || servants.some(f => f.root.visible && Math.hypot(x-f.root.position.x, z-f.root.position.z) < .3 + r);
+    const hitsMoving = (x,z,r) => life.blocks(x,z,r) || servants.some(f => f.root.visible && Math.hypot(x-f.root.position.x, z-f.root.position.z) < .3 + r);
+    const hitsCity = (x,z,r) => hitsStatic(x,z,r) || hitsMoving(x,z,r);
     const ZERO = new THREE.Vector3();
     let level = 'top';
     // on the street the shadow sits above the highest road layer so it never fights with the tarmac
@@ -2919,7 +2929,11 @@ function buildScene(){
         const turn = (k.has('arrowleft') ? 1 : 0) - (k.has('arrowright') ? 1 : 0);
         P.camYaw += turn*dt*1.8 + input.dx*.006; P.pitch = Math.max(.08, Math.min(1.05, P.pitch + input.dy*.004)); input.dx = input.dy = 0;
         let mx = (k.has('d') ? 1 : 0) - (k.has('a') ? 1 : 0) + input.joy.x, mz = (k.has('s') || k.has('arrowdown') ? 1 : 0) - (k.has('w') || k.has('arrowup') ? 1 : 0) + input.joy.y;
-        const street = level === 'street', base = street ? ZERO : P0, blocked = street ? hitsCity : hits;
+        const street = level === 'street', base = street ? ZERO : P0;
+        // never get stuck in traffic: a car that has driven into Tommy pushes him clear (but never into a wall), and if he's
+        // still caught inside a car or a person, only walls and buildings block his steps so he can always walk out
+        if (street){ const push = life.pushOut(P.x, P.z, .32); if (push && !hitsStatic(P.x + push[0], P.z + push[1], .32)){ P.x += push[0]; P.z += push[1]; } }
+        const blocked = !street ? hits : hitsMoving(P.x, P.z, .32) ? hitsStatic : hitsCity;
         const run = k.has('shift') || input.run, len = Math.hypot(mx,mz), sp = (run ? (street ? 7.5 : 5.2) : (street ? 3 : 2.4))*Math.min(1, len);   // a half-pushed stick walks slower
         if (len){
           mx /= len; mz /= len;

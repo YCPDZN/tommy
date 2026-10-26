@@ -110,6 +110,7 @@ A game starring Tommy (no last name), set in Westminster, London.
     - Through the telescope the camera clips everything within 25 m (`camera.near`), so terrace plants never block a landmark.
   - **Street life** (`life` in `buildFree`): about 64 cars, black cabs and red double-deckers drive on the left along `roads` and brake for Tommy. Buses stay on main roads. About 100 pedestrians walk the pavements, sidestep each other and Tommy, and never overlap.
     - Everything is pooled within `LIFE_R` of Tommy and recycled out of sight. Cars and people block Tommy.
+    - **No traffic softlocks:** a car that moves into Tommy pushes him to its nearest side (`life.pushOut`, never into a wall). If he's still caught inside a car or person (`hitsMoving`), only static collisions (`hitsStatic`) block his steps, so he can always walk out.
     - Pedestrians are the cutscene's cartoon extras: `figure()` sits at `buildScene` level and is shared. 24 looks are baked once into merged, vertex-coloured meshes (one per moving part) and reused, so the crowd stays cheap.
   - **Portcullis House** (`PH`) stands on the corner of Bridge Street and the Embankment, opposite Big Ben.
     - It's sandstone and bronze, with a bronze colonnade along Bridge Street, a pyramid roof and 14 bronze chimneys.
