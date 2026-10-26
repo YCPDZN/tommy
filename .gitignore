@@ -1,0 +1,7 @@
+# rebuilt by build/wrap.ps1, make-itch.ps1 and make-exe.ps1
+build/game.html
+build/audio/
+build/assets/
+build/launcher/tommy.ico
+Tommy-itch.zip
+Tommy.exe
