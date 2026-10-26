@@ -44,6 +44,9 @@ A game starring Tommy (no last name), set in Westminster, London.
       - Downing Street is a gated cul-de-sac with Numbers 10–12 in black brick on its north side and a constable on the door of No. 10.
       - It is **inaccessible**: steel gates block it, guarded by three armed police (caps, body armour, carbines). E at the gate gets a "move along" line (`GUARD_LINES`).
       - Both are landmarks on the minimap (`10`, `CO`) and in the telescope.
+      - Five civil servants (`servants`) come and go through the Cabinet Office door on staggered loops. They wear suits and lanyards and carry a red despatch box, briefcases or folders.
+        - They wait for Tommy and block him.
+        - They're flagged `invulnerable` ("unattacked", at the user's request), so any future combat, police or traffic must leave them alone.
   - **Street life** (`life` in `buildFree`): about 64 cars, black cabs and red double-deckers drive on the left along `roads` and brake for Tommy. Buses stay on main roads. About 100 pedestrians walk the pavements, sidestep each other and Tommy, and never overlap.
     - Everything is pooled within `LIFE_R` of Tommy and recycled out of sight. Cars and people block Tommy.
     - Pedestrians are the cutscene's cartoon extras: `figure()` sits at `buildScene` level and is shared. 24 looks are baked once into merged, vertex-coloured meshes (one per moving part) and reused, so the crowd stays cheap.

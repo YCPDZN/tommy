@@ -1310,6 +1310,33 @@ function buildScene(){
       armed(DS.x0 + 1.2, 476.5, Math.PI/2); armed(DS.x0 + 1.2, 486.5, Math.PI/2); armed(DS.x0 - 3, 482, Math.PI/2);
       const pc = figure({coat:0x141a2e, legs:0x141a2e, helmet:true, lids:true, wide:1.08}); pc.posed = true;
       pc.root.position.set(DS.x1 + 13.6, .3, 475.4); fsc.add(pc.root); pc.arms.forEach(a => { a.rotation.x = .25; }); guards.push(pc); }
+    // civil servants coming and going through the Cabinet Office door. They are protected: never targets for any
+    // future combat, police or traffic damage (invulnerable), so the Whitehall scenery always stays intact.
+    const servants = [];
+    { const fx = wx(376) - 17, zc = 376;
+      const looks = [
+        {coat:0x1f2a40, legs:0x1f2a40, style:'short', hair:0x2a1d14, tie:0x8b1a1a, glasses:true, carry:'despatch'},
+        {coat:0x3b3f46, legs:0x3b3f46, style:'bun', hair:0x5a3a20, skin:0xe8b48a, carry:'folder'},
+        {coat:0x2b2f3a, legs:0x2b2f3a, style:'bald', hair:0x8c8c8c, skin:0xc68a5c, tie:0x2f5a8a, carry:'briefcase'},
+        {coat:0x14171d, legs:0x14171d, style:'long', hair:0x141519, skin:0x9a6440, scarf:0x6b1f24, carry:'folder'},
+        {coat:0x4a5160, legs:0x2a2e36, style:'short', hair:0xb58f52, tie:0x2e3a2c, glasses:true, carry:'briefcase'},
+      ];
+      looks.forEach((o, i) => {
+        const f = figure(Object.assign({lids:true}, o)); fsc.add(f.root); f.invulnerable = true;
+        // a lanyard pass, and something to carry: a red despatch box, a briefcase or a folder
+        part(new THREE.BoxGeometry(.06,.08,.01), tc(0xf4f4f2), f.torso, [.05,.26,.16], [0,0,0], [1,1,1], 0);
+        const hand = f.arms[1];
+        if (o.carry === 'folder') part(new THREE.BoxGeometry(.04,.32,.24), tc(0xd8c9a0), hand, [-.02,-.5,.08], [0,0,0], [1,1,1], .005);
+        else part(new THREE.BoxGeometry(.1,.26,.38), tc(o.carry === 'despatch' ? 0x9a1b1b : 0x3a2416), hand, [0,-.68,0], [0,0,0], [1,1,1], .008);
+        // inside the door, through the columns, down onto the pavement, then up or down Whitehall
+        const side = i % 2 ? 1 : -1, far = 9 + i*6;
+        f.route = [[fx-1.2, zc], [fx+.9, zc], [fx+3.6, zc], [fx+4.6, zc + side*2.4], [fx+4.6, zc + side*far]];
+        // stagger them: some start inside, some outside about to head in
+        const outside = i % 2 === 1;
+        f.walk = {at: outside ? f.route.length-1 : 0, dir: 0, wait: 1 + i*3.5 + rand()*2, speed: 1.2 + rand()*.25, phase: rand()*6};
+        const [x0, z0] = f.route[f.walk.at]; f.root.position.set(x0, 0, z0); f.root.visible = outside;
+        f.root.rotation.y = outside ? (side > 0 ? Math.PI : 0) : Math.PI/2;
+        servants.push(f); }); }
     // the Cenotaph (Lutyens, 1920): a tall, slightly tapering stone pylon in the middle of Whitehall
     const CEN = new THREE.Vector3(15 + (560-40)*45/860, 0, 560);
     { const g = new THREE.Group(); g.position.copy(CEN); g.rotation.y = -Math.atan2(45,860); fsc.add(g); cityGroups.push(g);
@@ -1819,7 +1846,7 @@ function buildScene(){
         },
       };
     })();
-    const hitsCity = (x,z,r) => hitsStatic(x,z,r) || life.blocks(x,z,r);
+    const hitsCity = (x,z,r) => hitsStatic(x,z,r) || life.blocks(x,z,r) || servants.some(f => f.root.visible && Math.hypot(x-f.root.position.x, z-f.root.position.z) < .3 + r);
     const ZERO = new THREE.Vector3();
     let level = 'top';
     // on the street the shadow sits above the highest road layer so it never fights with the tarmac
@@ -1866,6 +1893,31 @@ function buildScene(){
         // through the eyepiece, Tommy and the telescope itself would only block the view
         tele.visible = tommy.root.visible = state !== 'scope';
         if (level === 'street') for (const g of guards) idle(g, t, dt, [0,-.3,.3]);
+        // the civil servants: wait (inside, or on the pavement), then walk the route in or out
+        for (const f of servants){
+          const w = f.walk;
+          if (w.dir === 0){
+            w.wait -= dt;
+            if (w.wait <= 0){ w.dir = w.at === 0 ? 1 : -1; f.root.visible = true; }
+            if (f.root.visible){ idle(f, t, dt, [0,.4,-.4]); f.legs[0].rotation.x = f.legs[1].rotation.x = 0; f.arms[0].rotation.x = f.arms[1].rotation.x = 0; }
+            continue;
+          }
+          const [tx2, tz2] = f.route[w.at + w.dir], dx = tx2 - f.root.position.x, dz = tz2 - f.root.position.z, d = Math.hypot(dx, dz);
+          // wait for Tommy if he's standing in the way
+          const tdx = P.x - f.root.position.x, tdz = P.z - f.root.position.z;
+          const held = level === 'street' && Math.hypot(tdx, tdz) < 1.2 && (tdx*dx + tdz*dz) > 0;
+          const step = held ? 0 : Math.min(d, w.speed*Math.min(dt, .1));
+          if (d > 1e-3){ f.root.position.x += dx/d*step; f.root.position.z += dz/d*step;
+            let dy = Math.atan2(dx, dz) - f.root.rotation.y; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); f.root.rotation.y += dy*Math.min(1, dt*8); }
+          w.phase += step*3.6; const sw = Math.sin(w.phase)*(held ? 0 : .45);
+          f.legs[0].rotation.x = sw; f.legs[1].rotation.x = -sw; f.arms[0].rotation.x = -sw*.8; f.arms[1].rotation.x = sw*.3;
+          idle(f, t, dt, null);
+          if (d - step < .02){
+            w.at += w.dir;
+            if (w.at === f.route.length-1){ w.dir = 0; w.wait = 3 + rand()*5; }               // a pause on the pavement
+            else if (w.at === 0){ w.dir = 0; w.wait = 6 + rand()*10; f.root.visible = false; } // gone inside for a while
+          }
+        }
         if (state === 'wake'){
           // lying in bed, then sitting up and swinging out to stand beside it
           const s = Math.min(1, Math.max(0, (stateT - 1.8)/1.6)), e = s*s*(3-2*s);
