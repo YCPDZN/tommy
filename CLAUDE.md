@@ -2,8 +2,14 @@
 
 A game starring Tommy (no last name), set in Westminster, London.
 
-**Right now Tommy uses the cartoon model** (`USE_GLB = false`, at the user's request "for now"). Setting `USE_GLB = true` brings back **the user's rigged model `assets/tommy.glb`** (from Codex: `Documents\Codex\2026-10-25\ma\outputs\character-rigged.glb`). It's loaded with GLTFLoader and SkeletonUtils (three r128 examples/js from jsdelivr) and attached by `attachGLB(rig)`.
-- The model has a photo-projected face and clothes (unlit materials) and a Mixamo-style 64-bone skeleton. All rest rotations are identity, the model faces +z, and it's scaled to 1.82 m.
+**Tommy uses the user's model `assets/tommy.glb`** (`USE_GLB = true`): "tommy model 2.glb" from `Documents\Tommy - The GTA Game`, a Tripo export. It's loaded with GLTFLoader and SkeletonUtils (three r128 examples/js from jsdelivr) and attached by `attachGLB(rig)`.
+- Tripo's rig was unusable: the bones had no rest transforms, the template skeleton faced +x, and nearly every vertex was weighted to the hips. `build/rig-glb.py` (run with `py -I`) re-rigs it:
+  - it turns the skeleton to face +z, gives the bones pure translations with matching bind matrices, and strips the `mixamorig:` prefix;
+  - it recomputes the skin weights from each vertex's distance to the bone segments (best 4, legs kept apart).
+  - Rerun it on the original file if the model changes, then regenerate `tommy-glb.txt`.
+- The previous Codex model is kept as `assets/tommy-old.glb`.
+- The model has lit PBR materials (base colour, roughness/metal and normal maps) and casts shadows. All rest rotations are identity, the model faces +z, and it's scaled to 1.82 m.
+- The seasonal hats and the sparkler hang off the toon rig, which is hidden while the model shows, so they don't appear on the model yet.
 - `glbAnimate()` poses the bones procedurally: a stride-locked walk/run, an idle with breathing and weight shift, and arms lowered from the A-pose.
 - The toon Tommy from `buildTommy()` still exists. It shows only until the file loads, or if it fails. A hand-built "human" version was tried and reverted.
 - Artifacts won't serve `.glb`, so the page loads `assets/tommy-glb.txt`: the GLB as base64, decoded with `GLTFLoader.parse`.

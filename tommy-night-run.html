@@ -1064,11 +1064,10 @@ function buildScene(){
   }
   return {root:tommy, body, torso, arms, legs, head, eyes, torsoY:.87, lookT:0, look:0, blinkAt:2};
   }
-  /* ---------- Tommy's rigged model (assets/tommy.glb, the user's Codex model) ----------
+  /* ---------- Tommy's rigged model (assets/tommy.glb, the user's "tommy model 2", re-rigged by build/rig-glb.py) ----------
      Mixamo-style bone names, metres, Y up, facing +z, every bone's rest rotation is identity, so each joint is
      posed with plain rotations about the character's own axes. The toon Tommy stands in until the file loads. */
-  // switched off for now at the user's request: Tommy uses the cartoon model. Set to true to bring the rigged model back.
-  const USE_GLB = false;
+  const USE_GLB = true;
   let tommyGLB = null; const glbWaiters = [];
   // artifacts don't serve .glb, so the model ships as base64 text (assets/tommy-glb.txt) and is decoded here
   if (USE_GLB && THREE.GLTFLoader) fetch('assets/tommy-glb.txt').then(r => { if (!r.ok) throw new Error(r.status); return r.text(); }).then(b64 => {
@@ -1082,7 +1081,7 @@ function buildScene(){
       const ref = m.getObjectByName('Reference_View'); if (ref) ref.visible = false;
       const box = new THREE.Box3().setFromObject(m), h = box.max.y - box.min.y, s = 1.82/h;
       const holder = new THREE.Group(); holder.scale.setScalar(s); holder.position.y = -box.min.y*s; holder.add(m);
-      m.traverse(o => { if (o.isMesh){ o.frustumCulled = false; } });
+      m.traverse(o => { if (o.isMesh){ o.frustumCulled = false; o.castShadow = true; } });
       const B = n => m.getObjectByName(n);
       const g = {holder, hipsY:holder.position.y, phase:0, gait:0, look:0, lookT:0,
         hips:B('Hips'), spine:B('Spine'), spine2:B('Spine2'), neck:B('Neck'), head:B('Head'),
