@@ -50,6 +50,11 @@ A game starring Tommy (no last name), set in Westminster, London.
   - **Street life** (`life` in `buildFree`): about 64 cars, black cabs and red double-deckers drive on the left along `roads` and brake for Tommy. Buses stay on main roads. About 100 pedestrians walk the pavements, sidestep each other and Tommy, and never overlap.
     - Everything is pooled within `LIFE_R` of Tommy and recycled out of sight. Cars and people block Tommy.
     - Pedestrians are the cutscene's cartoon extras: `figure()` sits at `buildScene` level and is shared. 24 looks are baked once into merged, vertex-coloured meshes (one per moving part) and reused, so the crowd stays cheap.
+  - **Portcullis House** (`PH`) stands on the corner of Bridge Street and the Embankment, opposite Big Ben.
+    - It's sandstone and bronze, with a bronze colonnade along Bridge Street, a pyramid roof and 14 bronze chimneys.
+    - **Westminster tube station** (`TUBE`) has entrances under it: in the Bridge Street colonnade and on the Embankment face. They have red-ring/blue-bar "WESTMINSTER" signs and a sign post on the corner.
+    - Walking up to an entrance shows "Circle, District and Jubilee lines". The trains don't run yet.
+    - Both are minimap (`PC`, `U`) and telescope landmarks.
   - `assets/water.jpg` (the user's water image) textures the Thames and the St James's Park lake, drifting with a ripple normal map.
   - `assets/tree-sheet.jpg` (the user's bark and leaf sheet) is cut at load time: the bark panel becomes the trunk texture, and the leafy branch is chroma-keyed into leaf cards. Trees are instanced and planted in even rows (The Mall, the Embankment, Northumberland Ave) and on a gently jittered lattice in the parks.
   - **Anti-flicker rules:**

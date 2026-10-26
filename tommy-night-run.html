@@ -1377,6 +1377,40 @@ function buildScene(){
       for (const s of [-1,1]){ const l = new THREE.Mesh(new THREE.CylinderGeometry(1,1.6,80,8), wm); l.position.set(0,-34,s*16); l.rotation.x = s*.42; eye.add(l); } }
     building(bankX(950)+330, 950, 80, 160, 28, CREAM);
 
+    /* ---- Portcullis House, with Westminster tube station underneath ---- */
+    // on the corner of Bridge Street and the Embankment, opposite Big Ben: sandstone and bronze, a colonnade along
+    // Bridge Street, and the row of tall bronze chimneys over its roof
+    const PH = {x1:216, x2:282, z1:866, z2:932}, phx = (PH.x1+PH.x2)/2, phz = (PH.z1+PH.z2)/2, phw = PH.x2-PH.x1, phd = PH.z2-PH.z1;
+    const TUBE = [{x:phx, z:PH.z2-3, face:'s'}, {x:PH.x2, z:900, face:'e'}];        // station entrances: Bridge Street and the Embankment
+    { const phMat = facadeOf('#cbbd9c','#36424e','#7a6a4a'), bronzeD = std(0x5b4a32,{metalness:.7,roughness:.35}), sand = std(0xc8b994,{roughness:.85});
+      // the ground floor is set back 3 m behind a colonnade on the Bridge Street side
+      building(phx, phz-1.5, phw, phd-3, 6, sand);
+      const upper = new THREE.Mesh(boxUV(phw,18,phd), phMat); upper.position.set(phx, 15, phz); fsc.add(upper); cityMeshes.push({m:upper, x:phx, z:phz, r:Math.hypot(phw,phd)/2});
+      for (let x=PH.x1+3; x<=PH.x2-3; x+=6){ const c = new THREE.Mesh(new THREE.CylinderGeometry(.42,.42,6,12), bronzeD); c.position.set(x,3,PH.z2-.6); fsc.add(c); cityCol.push([x-.45,PH.z2-1.05,x+.45,PH.z2-.15]); }
+      box(phw+.4,.5,.8,bronzeD,phx,23.8,phz+phd/2+.2,fsc); box(.8,.5,phd+.4,bronzeD,PH.x2+.2,23.8,phz,fsc);
+      // the roof, and its fourteen bronze chimneys
+      const roof = new THREE.Mesh(new THREE.ConeGeometry(Math.hypot(phw,phd)/2, 10, 4), std(0x4a4036,{metalness:.5,roughness:.5})); roof.rotation.y = Math.PI/4; roof.position.set(phx,29,phz); fsc.add(roof);
+      const flue = new THREE.CylinderGeometry(1.1,1.4,15,12), cap = new THREE.CylinderGeometry(1.5,1.1,1.2,12);
+      for (const [x,z] of [...[-24,-8,8,24].map(a => [a,-27]), ...[-24,-8,8,24].map(a => [a,27]), ...[-10,10].map(a => [-27,a]), ...[-10,10].map(a => [27,a]), [-27,-27+9], [27,27-9]]){
+        const f = new THREE.Mesh(flue, bronzeD); f.position.set(phx+x, 31, phz+z); fsc.add(f);
+        const c = new THREE.Mesh(cap, bronzeD); c.position.set(phx+x, 39, phz+z); fsc.add(c); }
+      const sign = new THREE.Mesh(new THREE.PlaneGeometry(7,.8), new THREE.MeshBasicMaterial({map:srgb(canvasTex(512,60,(g,w,h)=>{ g.fillStyle='#2a241c'; g.fillRect(0,0,w,h); g.fillStyle='#e8d9a8'; g.font='700 34px Georgia,serif'; g.textAlign='center'; g.fillText('PORTCULLIS HOUSE',w/2,43); }))}));
+      sign.position.set(PH.x1+12, 5.2, PH.z2-2.94); fsc.add(sign);
+      // Westminster station: a red ring with a blue name bar over each entrance, and a sign post on the corner
+      const roundel = srgb(canvasTex(256,256,(g,w,h)=>{ g.clearRect(0,0,w,h); g.strokeStyle='#dc241f'; g.lineWidth=42; g.beginPath(); g.arc(128,128,86,0,Math.PI*2); g.stroke();
+        g.fillStyle='#0019a8'; g.fillRect(6,103,244,50); g.fillStyle='#fff'; g.font='700 27px Arial,sans-serif'; g.textAlign='center'; g.fillText('WESTMINSTER',128,138); }));
+      const rMat = new THREE.MeshBasicMaterial({map:roundel, transparent:true, side:THREE.DoubleSide});
+      const glassDoor = std(0x1d2733,{metalness:.6,roughness:.15}), lit = std(0xf2ead6,{emissive:0x5a5440});
+      const lines = srgb(canvasTex(512,48,(g,w,h)=>{ g.fillStyle='#0019a8'; g.fillRect(0,0,w,h); g.fillStyle='#fff'; g.font='700 22px Arial,sans-serif'; g.textAlign='center'; g.fillText('Circle  ·  District  ·  Jubilee',w/2,32); }));
+      for (const e of TUBE){
+        const g = new THREE.Group(); g.position.set(e.x, 0, e.z); g.rotation.y = e.face === 'e' ? Math.PI/2 : 0; fsc.add(g);
+        box(7,3.6,.12,lit,0,1.8,.02,g); box(6,3,.14,glassDoor,0,1.5,.06,g);
+        for (let k=-2; k<=2; k++) box(.06,3,.16,std(0x9aa3ad,{metalness:.8}),k*1.2,1.5,.07,g);
+        const r = new THREE.Mesh(new THREE.PlaneGeometry(2.4,2.4), rMat); r.position.set(0,4.6,.12); g.add(r);
+        const l = new THREE.Mesh(new THREE.PlaneGeometry(4.4,.42), new THREE.MeshBasicMaterial({map:lines})); l.position.set(0,3.75,.1); g.add(l); }
+      { const tx = PH.x2+3.5, tz = PH.z2+5; const post = new THREE.Mesh(new THREE.CylinderGeometry(.09,.11,3.6,10), std(0x15171b,{metalness:.5})); post.position.set(tx,1.8,tz); fsc.add(post);
+        const r = new THREE.Mesh(new THREE.PlaneGeometry(1.6,1.6), rMat); r.position.set(tx,4.2,tz); r.rotation.y = -Math.PI/4; fsc.add(r); cityCol.push([tx-.2,tz-.2,tx+.2,tz+.2]); } }
+
     /* ---- The Mall, the Victoria Memorial and Buckingham Palace ---- */
     { const vm = new THREE.Group(); vm.position.set(-985,0,410); fsc.add(vm); cityGroups.push(vm);
       const base = new THREE.Mesh(new THREE.CylinderGeometry(24,26,2,32), stone); base.position.y=1; vm.add(base);
@@ -1640,6 +1674,8 @@ function buildScene(){
       {name:'The Cenotaph', at:new THREE.Vector3(CEN.x,6,CEN.z), size:22, desc:"The national war memorial on Whitehall, designed by Sir Edwin Lutyens and unveiled in 1920."},
       {name:'10 Downing Street', at:new THREE.Vector3(DS.x1+15,6,474), size:45, desc:"Home and office of the Prime Minister, Jordan Andreas. The street has been gated since 1989 and armed police guard it day and night."},
       {name:'Cabinet Office', at:new THREE.Vector3(wx(396)-40,12,396), size:130, desc:"70 Whitehall, joined at the back to Number 10. The government is run from here: COBRA meets in its briefing rooms."},
+      {name:'Portcullis House', at:new THREE.Vector3(phx,22,phz), size:95, desc:"Offices for MPs, opened in 2001 opposite Big Ben, crowned by fourteen bronze chimneys. Westminster tube station lies beneath it."},
+      {name:'Westminster Station', at:new THREE.Vector3(TUBE[0].x,4,TUBE[0].z), size:24, desc:"Circle, District and Jubilee lines. The Jubilee line platforms sit deep beneath Portcullis House."},
       {name:'Trafalgar Square', at:new THREE.Vector3(0,26,15), size:110, desc:"Nelson's Column rises 52 metres over the square, guarded by four bronze lions by Sir Edwin Landseer, with the National Gallery behind."},
       {name:'Buckingham Palace', at:new THREE.Vector3(BP.x,14,BP.z), size:150, desc:"The King's London residence, at the end of The Mall beyond the Victoria Memorial."},
       {name:'London Eye', at:new THREE.Vector3(bankX(860)+300,70,860), size:160, desc:"The 135-metre wheel on the South Bank, opened in 2000, looking straight across the river at Parliament."},
@@ -1984,6 +2020,8 @@ function buildScene(){
         if (street){
           nearWhat = Math.hypot(P.x-LOBBY.x, P.z-(LOBBY.z-1.5)) < 2.4 ? 'lift' : Math.abs(P.z-DS.z) < 9 && P.x > DS.x0 && P.x < DS.x0+6 ? 'gate' : null;
           talkT -= dt;
+          const atTube = !nearWhat && TUBE.some(e => Math.hypot(P.x - e.x - (e.face === 'e' ? 2 : 0), P.z - e.z - (e.face === 's' ? 2 : 0)) < 3.5);
+          if (atTube){ freeHint('Westminster Station · Circle, District and Jubilee lines', true); drawCityMap(P, cityCol, bankX, LANDMARKS); return; }
           freeHint(nearWhat === 'lift' ? 'Take the lift up to the penthouse' : nearWhat === 'gate' ? (talkT > 0 ? GUARD_LINES[talkI] : 'Talk to the armed officer') : null, nearWhat === 'gate' && talkT > 0);
           drawCityMap(P, cityCol, bankX, LANDMARKS);
         } else {
@@ -2345,7 +2383,7 @@ function freeScope(lm){
   $('scopePrev').hidden = $('scopeNext').hidden = !!lm.tv;
 }
 // north-up minimap of the penthouse, with blips on the rim pointing at the landmarks
-const BLIP = {'10 Downing Street':'10','Cabinet Office':'CO','Big Ben':'BB','Houses of Parliament':'HP','Westminster Abbey':'WA','The Cenotaph':'C','Trafalgar Square':'TS','Buckingham Palace':'BP','London Eye':'LE'};
+const BLIP = {'Portcullis House':'PC','Westminster Station':'U','10 Downing Street':'10','Cabinet Office':'CO','Big Ben':'BB','Houses of Parliament':'HP','Westminster Abbey':'WA','The Cenotaph':'C','Trafalgar Square':'TS','Buckingham Palace':'BP','London Eye':'LE'};
 function drawMinimap(P, landmarks, P0){
   const c = $('minimap'), g = c.getContext('2d'), W = c.width, R = W/2, s = 7.2;
   g.clearRect(0,0,W,W); g.save(); g.beginPath(); g.arc(R,R,R,0,7); g.clip();
