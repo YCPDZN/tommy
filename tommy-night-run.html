@@ -1067,7 +1067,8 @@ function buildScene(){
   /* ---------- Tommy's rigged model (assets/tommy.glb, the user's "tommy model 2", re-rigged by build/rig-glb.py) ----------
      Mixamo-style bone names, metres, Y up, facing +z, every bone's rest rotation is identity, so each joint is
      posed with plain rotations about the character's own axes. The toon Tommy stands in until the file loads. */
-  const USE_GLB = true;
+  // switched off at the user's request: Tommy uses the cartoon model again. Set to true to bring the rigged model back.
+  const USE_GLB = false;
   let tommyGLB = null; const glbWaiters = [];
   // artifacts don't serve .glb, so the model ships as base64 text (assets/tommy-glb.txt) and is decoded here
   if (USE_GLB && THREE.GLTFLoader) fetch('assets/tommy-glb.txt').then(r => { if (!r.ok) throw new Error(r.status); return r.text(); }).then(b64 => {

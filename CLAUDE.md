@@ -2,7 +2,7 @@
 
 A game starring Tommy (no last name), set in Westminster, London.
 
-**Tommy uses the user's model `assets/tommy.glb`** (`USE_GLB = true`): "tommy model 2.glb" from `Documents\Tommy - The GTA Game`, a Tripo export. It's loaded with GLTFLoader and SkeletonUtils (three r128 examples/js from jsdelivr) and attached by `attachGLB(rig)`.
+**Right now Tommy uses the cartoon model** (`USE_GLB = false`; the user asked for "the old Tommy model" back). Setting `USE_GLB = true` brings back **the user's model `assets/tommy.glb`**: "tommy model 2.glb" from `Documents\Tommy - The GTA Game`, a Tripo export. It's loaded with GLTFLoader and SkeletonUtils (three r128 examples/js from jsdelivr) and attached by `attachGLB(rig)`.
 - Tripo's rig was unusable: the bones had no rest transforms, the template skeleton faced +x, and nearly every vertex was weighted to the hips. `build/rig-glb.py` (run with `py -I`) re-rigs it:
   - it turns the skeleton to face +z, gives the bones pure translations with matching bind matrices, and strips the `mixamorig:` prefix;
   - it recomputes the skin weights from each vertex's distance to the bone segments (best 4, legs kept apart).
