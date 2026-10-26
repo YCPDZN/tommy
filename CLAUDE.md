@@ -79,7 +79,7 @@ A game starring Tommy (no last name), set in Westminster, London.
     - Granite kerbs (instanced) are broken at junctions. There are black lamp posts on main roads, and zebra crossings with Belisha beacons. Pavements are York stone slabs.
   - The layout is deliberately tidy. An even 100 m street grid with 10 m side streets runs around the main roads (Whitehall, The Mall, the Strand, Northumberland Ave, Pall Mall, Charing Cross Rd, the Embankment, Bridge St/Westminster Bridge, Parliament Square).
     - Each grid cell holds one 78 m mansion block (or four 34 m blocks next to a main road), at even heights of 21/24/27 m with district materials.
-    - Whitehall has a continuous 26 m Portland-stone frontage. Don't go back to random scattered buildings.
+    - Whitehall has a continuous 26 m Portland-stone frontage. Don't go back to random scattered buildings. (Soho has its own, finer tidy grid; see below.)
     - On Whitehall's west side, between Horse Guards and the Cenotaph, stand the **Cabinet Office (70 Whitehall)** and **Downing Street** (`DS`).
       - Downing Street is a gated cul-de-sac with Numbers 10–12 in black brick on its north side and a constable on the door of No. 10.
       - It is **inaccessible**: steel gates block it, guarded by three armed police (caps, body armour, carbines). E at the gate gets a "move along" line (`GUARD_LINES`).
@@ -87,6 +87,25 @@ A game starring Tommy (no last name), set in Westminster, London.
       - Five civil servants (`servants`) come and go through the Cabinet Office door on staggered loops. They wear suits and lanyards and carry a red despatch box, briefcases or folders.
         - They wait for Tommy and block him.
         - They're flagged `invulnerable` ("unattacked", at the user's request), so any future combat, police or traffic must leave them alone.
+  - **Soho** (north of Trafalgar Square, `inSoho()`):
+    - Boundaries: Oxford Street (z −1000), Regent Street (Piccadilly Circus (−465,−277) to Oxford Circus (−1010,−1000), `regentX`), Charing Cross Road (x 0, extended north to St Giles Circus), and Coventry Street / Leicester Square to the south.
+    - Shaftesbury Avenue runs diagonally to Cambridge Circus (0,−700), and Piccadilly and Haymarket meet at the Circus.
+    - The map now reaches z −1150, and the generic grid runs from z −1100.
+    - It has **its own tidy grid** of 8 m streets (XS/ZS). Carnaby Street (x −635) is pedestrian-only (`ped`, no cars). Gerrard Street (z −380) is Chinatown; Old Compton Street is z −560.
+    - The streets are lined with narrow frontages built by `frontage()`:
+      - Each has a brick or stucco facade with sash windows and a made-up shop at street level (`sohoFacade`: café, bar, records…). Signs and windows glow at night (`sohoMats`).
+      - Frontages are merged per material into 300 m chunks. Rows face the two diagonals; Regent Street is Portland stone, and Shaftesbury Avenue has three theatres with made-up shows.
+    - Landmarks:
+      - Piccadilly Circus: a tarmac disc, the Eros fountain, and a building with animated made-up adverts (`sohoTick`, every 4 s).
+      - Leicester Square: a garden with railings and trees, and "The Regal" cinema.
+      - Chinatown: gates at both ends of Gerrard Street, and red lanterns (`sohoLit`).
+      - Rainbow bunting on Old Compton Street.
+      - Carnaby Street's neon arch.
+      - Soho Square: a garden with the mock-Tudor hut.
+      - Centre Point (117 m) at (28,−960).
+      - All are telescope and minimap landmarks (PI, LS, CT, SS, CS, CP).
+    - Collision is a bucketed index (`colIndex`, 50 m cells) over `cityCol` AABBs plus rotated footprints (`obbs`).
+    - Through the telescope the camera clips everything within 25 m (`camera.near`), so terrace plants never block a landmark.
   - **Street life** (`life` in `buildFree`): about 64 cars, black cabs and red double-deckers drive on the left along `roads` and brake for Tommy. Buses stay on main roads. About 100 pedestrians walk the pavements, sidestep each other and Tommy, and never overlap.
     - Everything is pooled within `LIFE_R` of Tommy and recycled out of sight. Cars and people block Tommy.
     - Pedestrians are the cutscene's cartoon extras: `figure()` sits at `buildScene` level and is shared. 24 looks are baked once into merged, vertex-coloured meshes (one per moving part) and reused, so the crowd stays cheap.

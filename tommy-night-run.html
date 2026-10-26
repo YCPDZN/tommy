@@ -1690,7 +1690,7 @@ function buildScene(){
       sv.x = Math.round(sv.x/texel)*texel; sv.y = Math.round(sv.y/texel)*texel; sv.applyMatrix4(sunBasis);
       sun.target.position.copy(sv); sun.position.copy(sv).addScaledVector(SUN_DIR, 700); };
     // street-level collision: footprints of everything Tommy can't walk through, and meshes the camera can't see through
-    const cityCol = [], cityMeshes = [], cityGroups = [];
+    const cityCol = [], cityMeshes = [], cityGroups = [], obbs = [];   // obbs: rotated footprints [cx,cz,halfW,halfD,cos,sin]
     const solidCity = (m, x1,z1,x2,z2) => { cityCol.push([x1,z1,x2,z2]); cityMeshes.push({m, x:(x1+x2)/2, z:(z1+z2)/2, r:Math.hypot(x2-x1,z2-z1)/2}); };
     const fb = (w,h,d,mat,x,y,z,parent=fsc) => { const m = box(w,h,d,mat,x,y,z,parent); if (parent === fsc && y-h/2 < 2 && w > 1.2 && d > 1.2) solidCity(m, x-w/2,z-d/2,x+w/2,z+d/2); return m; };
     const flat = (w,d,mat,x,z,y=.05,rot=0) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w,d), mat); m.rotation.set(-Math.PI/2,0,rot); m.position.set(x,y,z); fsc.add(m); return m; };
@@ -2023,15 +2023,27 @@ function buildScene(){
     road(bankX(965)-8,962,bankX(965)+270,962,16,TARMAC4);
     road(28,880,205,880,12,TARMAC2); road(28,1012,205,1012,12,TARMAC2); road(28,880,28,1012,12,TARMAC2); road(205,880,205,1012,12,TARMAC2);   // Parliament Square
     for (let z=-600; z<1400; z+=100) road(bankX(z)-14, z, bankX(z+100)-14, z+100, 16, TARMAC4);   // Victoria Embankment
+    // Soho's edges: Oxford Street, Regent Street, Shaftesbury Avenue, Coventry Street, Haymarket, Piccadilly, and Charing
+    // Cross Road on to St Giles Circus. Five of them meet at Piccadilly Circus (-465,-277).
+    const PICC = {x:-465, z:-277};
+    road(-1500,-1000,400,-1000,16,TARMAC4);           // Oxford Street and New Oxford Street
+    road(PICC.x,PICC.z,-1010,-1000,16,TARMAC4);       // Regent Street, up to Oxford Circus
+    road(PICC.x,PICC.z,0,-700,14,TARMAC2);            // Shaftesbury Avenue, to Cambridge Circus
+    road(PICC.x,PICC.z,0,-285,14,TARMAC2);            // Coventry Street and Cranbourn Street
+    road(-445,-81,PICC.x,PICC.z,14,TARMAC2);          // Haymarket
+    road(PICC.x,PICC.z,-1500,-300,16,TARMAC4);        // Piccadilly
+    road(0,-700,0,-1000,14,TARMAC2);                  // Charing Cross Road, on to St Giles Circus
+    const regentX = z => PICC.x + (z - PICC.z)*.754;   // Regent Street's line, north of the Circus
+    const inSoho = (x,z,r=0) => z > -1000 - r && z < -135 + r && x < r && x > (z < PICC.z ? regentX(z) : -445) - r;
 
     // exclusion zones for the street grid: parks, squares, landmarks, the river
     const rects = [[-100,-105,115,65],[-140,140,-5,360],[-1400,-260,-900,300],[-1440,330,-990,830],[-1050,340,-900,480],[20,870,215,1020],[200,940,330,1300],[-70,1040,170,1135],[160,345,240,420],[170,820,330,945],[-960,150,-140,470]];
-    const inZone = (x,z,r) => rects.some(([a,b,c,d]) => x > a-r && x < c+r && z > b-r && z < d+r) || (x > bankX(z)-30-r && x < bankX(z)+290+r)
+    const inZone = (x,z,r) => rects.some(([a,b,c,d]) => x > a-r && x < c+r && z > b-r && z < d+r) || (x > bankX(z)-30-r && x < bankX(z)+290+r) || inSoho(x,z,r)
       || segDist(x,z,PARK_SJ.x-400*Math.cos(.37),PARK_SJ.z-400*Math.sin(.37),PARK_SJ.x+400*Math.cos(.37),PARK_SJ.z+400*Math.sin(.37)) < 165 + r
       || segDist(x,z,15,40,60,900) < 66 + r;                                     // the Whitehall frontage
     const nearMain = (x,z,r) => roads.some(rd => segDist(x,z,rd.x1,rd.z1,rd.x2,rd.z2) < rd.w/2 + 6 + r);
     // an even 100 m street grid: 10 m side streets, buildings set back behind 5 m pavements
-    const G = 100, X0 = -1400, Z0 = -700, NX = 26, NZ = 22;
+    const G = 100, X0 = -1400, Z0 = -1100, NX = 26, NZ = 26;   // north to beyond Oxford Street
     for (let i=0; i<=NX; i++) for (let j=0; j<NZ; j++){ const x = X0 + i*G, z1 = Z0 + j*G, z2 = z1 + G; if (!inZone(x,(z1+z2)/2,4) && !nearMain(x,(z1+z2)/2,-20)) road(x,z1,x,z2,10,TARMAC2,.05); }
     for (let j=0; j<=NZ; j++) for (let i=0; i<NX; i++){ const z = Z0 + j*G, x1 = X0 + i*G, x2 = x1 + G; if (!inZone((x1+x2)/2,z,4) && !nearMain((x1+x2)/2,z,-20)) road(x1,z,x2,z,10,TARMAC2,.062); }
     // blocks: one even mansion block per cell, or four smaller ones where a main road cuts the corner
@@ -2043,6 +2055,208 @@ function buildScene(){
       if (!inZone(cx,cz,39) && !nearMain(cx,cz,39)) { block(cx,cz,78,78,h,mat); continue; }
       for (const [ox,oz] of [[-1,-1],[1,-1],[-1,1],[1,1]]){ const qx = cx + ox*21, qz = cz + oz*21; if (!inZone(qx,qz,17) && !nearMain(qx,qz,17)) block(qx,qz,34,34,h,mat); }
     }
+    let sohoTick = () => {};
+    /* ---- Soho: Piccadilly Circus, Leicester Square, Chinatown, Old Compton Street, Carnaby Street, Soho Square ---- */
+    // Soho keeps its own tight grid of 8 m streets (its real streets are close to one), lined with narrow 4-5 storey
+    // frontages in brick and painted stucco, each with a shop, café or bar at street level whose sign glows at night.
+    // Frontages are merged per material into a few big meshes, so hundreds of them stay cheap to draw. All shop, show
+    // and advert names are made up.
+    const sohoMats = [], sohoLit = [];   // facades (neon at night) and things that glow day and night
+    { const SW = 7;                      // one shopfront module: the facade texture repeats every 7 m along a wall
+      // facade texture: 256 x 512 for a whole frontage (cornice, three floors of sash windows, fascia, shopfront)
+      const sohoFacade = (base, brick, shop, sign, signCol, opts={}) => {
+        const W = 256, H = 512, map = canvasTex(W,H,g => {
+          g.fillStyle = base; g.fillRect(0,0,W,H);
+          if (brick){ for (let y=0;y<360;y+=8){ g.fillStyle = 'rgba(0,0,0,.12)'; g.fillRect(0,y,W,1); for (let x=(y/8%2)*12;x<W;x+=24) g.fillRect(x,y,1,8); }
+            for (let i=0;i<500;i++){ g.fillStyle = rand() < .5 ? 'rgba(0,0,0,.08)' : 'rgba(255,255,255,.06)'; g.fillRect(rand()*W, rand()*360, 6, 3); } }
+          g.fillStyle = opts.trim || '#e9e4d8'; g.fillRect(0,0,W,16); g.fillRect(0,356,W,14);           // cornice and fascia ledge
+          for (let f=0; f<3; f++) for (const x of [42,150]){ const y = 30 + f*110;
+            g.fillStyle = '#f2efe6'; g.fillRect(x-5,y-5,74,86); g.fillStyle = '#20262e'; g.fillRect(x,y,64,76);
+            const gr = g.createLinearGradient(0,y,0,y+76); gr.addColorStop(0,'rgba(170,200,230,.35)'); gr.addColorStop(1,'rgba(170,200,230,0)'); g.fillStyle = gr; g.fillRect(x,y,64,76);
+            g.fillStyle = '#f2efe6'; g.fillRect(x,y+36,64,4); g.fillRect(x+30,y,4,76); g.fillRect(x-8,y+80,80,6); }
+          g.fillStyle = shop; g.fillRect(0,370,W,H-370);                                                // the shopfront
+          g.fillStyle = '#16181c'; g.fillRect(14,374,W-28,34);                                          // sign board
+          g.fillStyle = signCol; g.font = `800 ${opts.small ? 18 : 24}px Arial,sans-serif`; g.textAlign = 'center'; g.fillText(sign, W/2, 399);
+          // the shop window: dark glass with shelves of goods behind it and a sheen across the top
+          g.fillStyle = '#1b232c'; g.fillRect(16,414,152,86);
+          for (const y of [446,476]){ g.fillStyle = 'rgba(255,230,190,.35)'; g.fillRect(20,y,144,3); for (let x=24;x<160;x+=14){ g.fillStyle = `hsla(${rand()*360},45%,60%,.55)`; g.fillRect(x,y-10-rand()*8,9,10+rand()*8); } }
+          { const sh = g.createLinearGradient(0,414,0,470); sh.addColorStop(0,'rgba(200,220,240,.3)'); sh.addColorStop(1,'rgba(200,220,240,0)'); g.fillStyle = sh; g.fillRect(16,414,152,56); }
+          g.fillStyle = shop; g.fillRect(90,414,4,86);                                                  // glazing bar
+          g.fillStyle = '#1c1f24'; g.fillRect(182,414,58,98); g.fillStyle = 'rgba(255,220,170,.2)'; g.fillRect(188,420,46,50);     // door
+          if (opts.awning){ for (let x=0;x<W;x+=24){ g.fillStyle = x/24%2 ? opts.awning : '#f4f1ea'; g.fillRect(x,408,24,10); } } });
+        const glow = canvasTex(128,256,g => { g.fillStyle = '#000'; g.fillRect(0,0,128,256);
+          for (let f=0; f<3; f++) for (const x of [21,75]) if (rand() < .35){ g.fillStyle = rand() < .8 ? '#ffcf86' : '#cfe0ff'; g.fillRect(x,15+f*55,32,38); }
+          g.fillStyle = '#ffd9a0'; g.fillRect(8,207,76,43); g.fillRect(94,210,23,25);                  // lit window and door glass
+          g.fillStyle = signCol; g.font = `800 ${opts.small ? 9 : 12}px Arial,sans-serif`; g.textAlign = 'center'; g.fillText(sign, 64, 199); });
+        for (const t of [map, glow]){ srgb(t); t.wrapS = THREE.RepeatWrapping; t.anisotropy = 8; }
+        const m = std(0xffffff,{map, emissive:0xffffff, emissiveMap:glow, emissiveIntensity:.25, roughness:.85}); sohoMats.push(m); return m; };
+      const SHOPS = [['CAFÉ','#1f4d3a','#ffd36a'],['BAR','#2a1a3a','#ff4fa8'],['DELI','#5a1e1e','#ffe6a0'],['BOOKS','#1e2f5a','#9fd8ff'],['RECORDS','#111111','#4dff9a'],
+        ['PIZZA','#7a2016','#ffb34d'],['WINE BAR','#3a1020','#ff6a6a'],['SALON','#3a2a44','#e08aff'],['ESPRESSO','#2b1d14','#ffd9a0'],['TAILOR','#0f2a2a','#e8e2b0'],
+        ['GALLERY','#2a2a2e','#7a9aff'],['DINER','#0d3a5a','#ff5050'],['VINYL','#1a1a1a','#ff8a2a'],['RAMEN','#4a1414','#ffe08a']];
+      const BASES = [['#8e3b2e',1],['#6b4a36',1],['#b9a27a',1],['#e8dcc0',0],['#e6b9b4',0],['#a9c4d6',0],['#a8b89a',0],['#efece4',0],['#3a3a40',1],['#c98a5a',1]];
+      const AWN = [null,'#c0392b','#1f6f4a','#1e3a6a',null,'#6a2a6a'];
+      const general = SHOPS.map(([n,shop,col],i) => { const [b,br] = BASES[(i*3+1)%BASES.length]; return sohoFacade(b, br, shop, n, col, {awning:AWN[i%AWN.length]}); });
+      const CHINA = ['NOODLE BAR','DIM SUM','BAKERY','ROAST HOUSE','TEA HOUSE','HOT POT'];
+      const chinatown = CHINA.map((n,i) => sohoFacade(['#b9a27a','#8e3b2e','#e8dcc0'][i%3], i%3 !== 2, '#a8121c', n, '#ffd36a', {awning:'#ffd36a', trim:'#c9a24a', small:n.length > 9}));
+      const REGENT = ['ATELIER','HABERDASHER','MAISON','OUTFITTERS'].map(n => sohoFacade('#e4dccb', 0, '#2a2e36', n, '#f2e6c0', {trim:'#d8cfb8', small:n.length > 9}));
+      // Leicester Square's cinema and the Shaftesbury Avenue theatres: whole-front textures (one per wall)
+      const signTex = (w, h, draw) => { const t = srgb(canvasTex(w, h, draw)); t.anisotropy = 8; return t; };
+      const cinemaMat = (() => { const draw = lit => g => { g.fillStyle = lit ? '#000' : '#1b2230'; g.fillRect(0,0,512,256);
+          if (!lit){ for (let x=0;x<512;x+=32){ g.fillStyle = '#2a3446'; g.fillRect(x+2,40,28,150); } }
+          g.fillStyle = lit ? '#ff2a3a' : '#7a1820'; g.font = '900 64px Arial,sans-serif'; g.textAlign = 'center'; g.fillText('THE REGAL', 256, 112);
+          g.fillStyle = lit ? '#ffe9b0' : '#d8cfb8'; g.fillRect(0,190,512,22);
+          for (let x=6;x<512;x+=14){ g.fillStyle = lit ? '#fff2c0' : '#b8a878'; g.fillRect(x,196,6,8); }
+          for (let k=0;k<4;k++){ g.fillStyle = lit ? ['#ffb84d','#7ad1ff','#ff6aa8','#9dff7a'][k] : '#3a4152'; g.fillRect(40 + k*118, 128, 80, 52); } };
+        const m = std(0xffffff,{map:signTex(512,256,draw(false)), emissive:0xffffff, emissiveMap:signTex(512,256,draw(true)), emissiveIntensity:.25, roughness:.6}); sohoMats.push(m); return m; })();
+      const theatreMats = [['THE ORPHEUS','THE ADDRESS','A NEW MUSICAL'],['THE MERIDIAN','LONDON NIGHTS','NOW PLAYING'],['THE LYRE','THE WESTMINSTER WALTZ','LAST WEEKS']].map(([house, show, tag]) => {
+        const draw = lit => g => { g.fillStyle = lit ? '#000' : '#e2d8c2'; g.fillRect(0,0,256,512);
+          if (!lit){ g.fillStyle = '#cfc4ac'; g.fillRect(0,0,256,26); for (const x of [30,108,186]){ g.fillStyle = '#2a2a30'; g.beginPath(); g.moveTo(x,250); g.lineTo(x,150); g.arc(x+20,150,20,Math.PI,0); g.lineTo(x+40,250); g.fill(); } }
+          else for (const x of [30,108,186]) if (rand() < .6){ g.fillStyle = '#ffcf86'; g.fillRect(x+4,140,32,108); }
+          g.fillStyle = lit ? '#ffd36a' : '#7a5a14'; g.font = '800 22px Georgia,serif'; g.textAlign = 'center'; g.fillText(house, 128, 70);
+          g.fillStyle = lit ? '#120a18' : '#1a1020'; g.fillRect(8,290,240,96);                                     // the marquee
+          for (let x=12;x<248;x+=10){ g.fillStyle = lit ? '#fff2c0' : '#a8986a'; g.fillRect(x,292,5,5); g.fillRect(x,379,5,5); }
+          g.fillStyle = lit ? '#ff5a8a' : '#d84a7a'; g.font = `900 ${show.length > 14 ? 20 : 28}px Arial,sans-serif`; g.fillText(show, 128, 340);
+          g.fillStyle = lit ? '#ffffff' : '#e8e0d0'; g.font = '700 15px Arial,sans-serif'; g.fillText(tag, 128, 368);
+          if (!lit){ g.fillStyle = '#3a1418'; g.fillRect(0,386,256,126); for (const x of [24,104,184]){ g.fillStyle = '#c9a24a'; g.fillRect(x,410,48,102); } }
+          else { g.fillStyle = '#ffd9a0'; for (const x of [24,104,184]) g.fillRect(x+4,414,40,98); } };
+        const m = std(0xffffff,{map:signTex(256,512,draw(false)), emissive:0xffffff, emissiveMap:signTex(256,512,draw(true)), emissiveIntensity:.25, roughness:.7}); sohoMats.push(m); return m; });
+      const roofM = std(0x4a4d55,{roughness:.85, side:THREE.DoubleSide});
+      // merged geometry, grouped by material and by 300 m chunk (so far chunks can be culled)
+      const groups = new Map();
+      const grp = (mat, x, z) => { const k = mat.uuid + '|' + Math.floor(x/300) + ',' + Math.floor(z/300); let g = groups.get(k);
+        if (!g) groups.set(k, g = {mat, p:[], n:[], u:[], i:[]}); return g; };
+      // a frontage: a w x d box of height h, turned by rot; every wall takes the facade (whole shopfront modules), the top is roof
+      function frontage(mat, cx, cz, w, d, h, rot=0, units=0){
+        const c = Math.cos(rot), s = Math.sin(rot), W = (lx,lz) => [cx + lx*c + lz*s, cz - lx*s + lz*c];
+        const faces = [[[-w/2,d/2],[w/2,d/2],w],[[w/2,-d/2],[-w/2,-d/2],w],[[w/2,d/2],[w/2,-d/2],d],[[-w/2,-d/2],[-w/2,d/2],d]];
+        const g = grp(mat, cx, cz);
+        for (const [a,b,len] of faces){ const [x0,z0] = W(...a), [x1,z1] = W(...b), rx = x1-x0, rz = z1-z0, rl = Math.hypot(rx,rz), nx = -rz/rl, nz = rx/rl;
+          const U = units || Math.max(1, Math.round(len/SW)), o = g.p.length/3;
+          g.p.push(x0,0,z0, x1,0,z1, x1,h,z1, x0,h,z0); for (let k=0;k<4;k++) g.n.push(nx,0,nz); g.u.push(0,0, U,0, U,1, 0,1); g.i.push(o,o+1,o+2, o,o+2,o+3); }
+        const r = grp(roofM, cx, cz), o = r.p.length/3, cs = [W(-w/2,-d/2),W(w/2,-d/2),W(w/2,d/2),W(-w/2,d/2)];
+        cs.forEach(([x,z]) => { r.p.push(x,h,z); r.n.push(0,1,0); r.u.push(0,0); }); r.i.push(o,o+1,o+2, o,o+2,o+3);
+        if (rot) obbs.push([cx,cz,w/2,d/2,c,s]); else cityCol.push([cx-w/2,cz-d/2,cx+w/2,cz+d/2]);
+      }
+      const pick = a => a[Math.floor(rand()*a.length)];
+      // the streets: 8 m, north-south and east-west. Carnaby Street (x -635) is for people only.
+      const XS = [-75,-155,-235,-315,-395,-475,-555,-635,-715,-795,-875,-955], ZS = [-920,-830,-740,-650,-560,-470,-380];
+      const westOf = z => z < PICC.z ? regentX(z) : -445;
+      for (const x of XS){ const zTop = -1000, zBot = x > -445 ? (x === -75 || x === -235 ? -140 : -285) : Math.min(-285, (x - PICC.x)/.754 + PICC.z);
+        if (zBot <= zTop + 20) continue;
+        road(x, zTop, x, zBot, 8, x === -635 ? paving : TARMAC2, .05); if (x === -635) roads[roads.length-1].ped = true; }
+      for (const z of ZS){ const x0 = z === -380 ? -340 : westOf(z); road(x0, z, 0, z, 8, TARMAC2, .062); }
+      road(-440, -140, 0, -140, 8, TARMAC2, .062);                                                    // Irving Street, south of Leicester Square
+      // what stands where: squares, the Circus and the diagonals take priority over the grid of frontages
+      const LSQ = {x1:-231, z1:-281, x2:-79, z2:-144}, SSQ = {x:-275, z:-875};
+      const SHAFT = roads.find(r => r.x1 === PICC.x && r.z1 === PICC.z && r.x2 === 0 && r.z2 === -700);
+      const REG = roads.find(r => r.x1 === PICC.x && r.z1 === PICC.z && r.x2 === -1010);
+      const diagNear = (x,z,pad) => [SHAFT,REG].some(r => segDist(x,z,r.x1,r.z1,r.x2,r.z2) < r.w/2 + pad);
+      const free = (x1,z1,x2,z2) => { for (const [x,z] of [[x1,z1],[x2,z1],[x1,z2],[x2,z2],[(x1+x2)/2,(z1+z2)/2]]){
+          if (!inSoho(x,z) || diagNear(x,z,14) || Math.hypot(x-PICC.x, z-PICC.z) < 62) return false; }
+        return !(x2 > LSQ.x1 && x1 < LSQ.x2 && z2 > LSQ.z1 && z1 < LSQ.z2) && !(Math.abs((x1+x2)/2 - SSQ.x) < 40 && Math.abs((z1+z2)/2 - SSQ.z) < 45); };
+      // the grid of cells between the streets, filled with side-by-side frontages that run the depth of the cell
+      const XL = [[0,7], ...XS.map(x => [x,4])], ZL = [[-1000,8], ...ZS.map(z => [z,4]), [-285,7], [-140,4]];
+      for (let a=0; a<XL.length-1; a++) for (let b=0; b<ZL.length-1; b++){
+        const [xe,he] = XL[a], [xw,hw] = XL[a+1], [zn,hn] = ZL[b], [zs,hs] = ZL[b+1];
+        const x1 = xw + hw + 3.5, x2 = xe - he - 3.5, z1 = zn + hn + 3.5, z2 = zs - hs - 3.5;
+        if (x2 - x1 < 8 || z2 - z1 < 8) continue;
+        let zc1 = z1;
+        if (x1 > -80 && z1 > LSQ.z1 - 1 && z2 < LSQ.z2 + 1){                                         // the cinema on Leicester Square's east side
+          frontage(cinemaMat, (x1+x2)/2, z1 + 25, x2-x1, 50, 24, 0, 1); zc1 = z1 + 50; }
+        const china = (Math.abs(zn + 380) < 1 || Math.abs(zs + 380) < 1) && x1 > -345;
+        let x = x1; while (x < x2 - 4){ let w = 5.5 + rand()*3.5; if (x2 - (x + w) < 5.5) w = x2 - x;
+          if (free(x, zc1, x+w, z2)) frontage(china ? pick(chinatown) : pick(general), x + w/2, (zc1+z2)/2, w, z2-zc1, 11 + rand()*8);
+          x += w; } }
+      // rows of frontages facing the two diagonals, Shaftesbury Avenue (with its theatres) and Regent Street (all Portland stone)
+      for (const [r, mats, theatres] of [[SHAFT, general, true], [REG, REGENT, false]]){
+        const ux = (r.x2-r.x1)/r.len, uz = (r.z2-r.z1)/r.len;
+        for (const side of [-1,1]){ let t = 75, n = 0; const rot = Math.atan2(-side*uz, side*ux);   // local x runs along the road
+          while (t < r.len - 20){ const theatre = theatres && side === 1 && n % 9 === 4, w = theatre ? 18 : 6 + rand()*3, D = 11, off = r.w/2 + 3.5 + D/2;
+            const cx = r.x1 + ux*(t + w/2) + uz*side*off, cz = r.z1 + uz*(t + w/2) - ux*side*off;
+            const fx = r.x1 + ux*(t + w/2) + uz*side*(r.w/2 + 2), fz = r.z1 + uz*(t + w/2) - ux*side*(r.w/2 + 2);
+            const taken = [[0,0],[-1,-1],[1,-1],[-1,1],[1,1]].some(([a,b]) => { const px = cx + ux*a*w/2 + uz*b*D/2, pz = cz + uz*a*w/2 - ux*b*D/2;
+              return cityCol.some(([x1,z1,x2,z2]) => px > x1 && px < x2 && pz > z1 && pz < z2); });
+            if (!taken && !onAnyRoad(fx, fz, roads.indexOf(r), 3) && !onAnyRoad(cx, cz, roads.indexOf(r), 2) && Math.hypot(cx-PICC.x, cz-PICC.z) > 62)
+              frontage(theatre ? pick(theatreMats) : pick(mats), cx, cz, w, D, theatre ? 20 : 14 + rand()*6, rot, theatre ? 1 : 0);
+            t += w; n++; } } }
+      // build the merged meshes
+      for (const g of groups.values()){ const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(g.p,3)); geo.setAttribute('normal', new THREE.Float32BufferAttribute(g.n,3));
+        geo.setAttribute('uv', new THREE.Float32BufferAttribute(g.u,2)); geo.setIndex(g.i); geo.computeBoundingSphere();
+        const m = new THREE.Mesh(geo, g.mat); fsc.add(m);
+        if (g.mat !== roofM) cityMeshes.push({m, x:geo.boundingSphere.center.x, z:geo.boundingSphere.center.z, r:geo.boundingSphere.radius}); }
+
+      // Piccadilly Circus: tarmac over the five-way junction, the Eros fountain on its island, and the giant screens
+      { const disc = new THREE.Mesh(new THREE.CircleGeometry(34,48), std(0x37383c,{roughness:.85})); disc.rotation.x = -Math.PI/2; disc.position.set(PICC.x,.1,PICC.z); fsc.add(disc);
+        MAP.plazas.push({x:PICC.x, z:PICC.z, w:56, d:56, rot:0, col:'#3a3d45'});
+        const isl = new THREE.Mesh(new THREE.CylinderGeometry(9,9,.25,32), std(0xb8b0a0,{roughness:.9})); isl.position.set(PICC.x,.125,PICC.z); fsc.add(isl);
+        cityCol.push([PICC.x-6,PICC.z-6,PICC.x+6,PICC.z+6]);
+        const bronzeE = std(0x5a4a32,{metalness:.7,roughness:.35}), alu = std(0x6e7c80,{metalness:.7,roughness:.3});
+        for (const [r,h,y] of [[4,.9,.7],[1.3,3.6,2.95],[.9,.5,5]]){ const m = new THREE.Mesh(new THREE.CylinderGeometry(r*.92,r,h,8), bronzeE); m.position.set(PICC.x,y,PICC.z); fsc.add(m); }
+        const eros = new THREE.Group(); eros.position.set(PICC.x,5.25,PICC.z); eros.rotation.y = .6; fsc.add(eros);
+        { const b = new THREE.Mesh(new THREE.CylinderGeometry(.16,.2,1.5,10), alu); b.position.y = .9; b.rotation.z = .12; eros.add(b);
+          const hd = new THREE.Mesh(new THREE.SphereGeometry(.18,12,10), alu); hd.position.set(-.08,1.78,0); eros.add(hd);
+          for (const sx of [-1,1]){ const w = new THREE.Mesh(new THREE.PlaneGeometry(1,.45), alu); w.material = alu.clone(); w.material.side = THREE.DoubleSide; w.position.set(sx*.45,1.45,-.1); w.rotation.set(0,sx*.5,sx*.5); eros.add(w); }
+          const bow = new THREE.Mesh(new THREE.TorusGeometry(.5,.03,6,16,Math.PI), alu); bow.position.set(.35,1.3,.3); bow.rotation.set(0,1.2,Math.PI/2); eros.add(bow); }
+        // the screens wrap the building on the Circus's north side; the adverts change every few seconds
+        building(PICC.x - 5, PICC.z - 62, 36, 24, 24, BRICK);
+        const adC = document.createElement('canvas'); adC.width = 1024; adC.height = 360; const adT = srgb(new THREE.CanvasTexture(adC));
+        const ADS = [['LDN NEWS 24','THE WAR ON CRIME STARTS NOW','#c4161c','#1d2a55'],['NOODLE KING','HOT. FAST. SOHO.','#ffcf3a','#c41a2a'],['ROYAL THAMES GIN','DISTILLED IN LONDON','#e8f4ff','#0f3a5a'],
+          ['THAMES TELECOM','FASTER ON EVERY STREET','#ffffff','#6a2ad8'],['THE ADDRESS','A NEW MUSICAL · SHAFTESBURY AVE','#ffd36a','#2a0a1a'],['CAB IT','THE BLACK CAB APP','#111111','#ffc22e'],
+          ['WESTMINSTER WATCHES','TIME WELL SPENT','#f2e6c0','#14181e'],['FIZZ','SPARKLING LEMONADE','#2a2a2a','#9dff5a']];
+        let adAt = -1e9;
+        const drawAds = () => { const g = adC.getContext('2d'), order = ADS.slice().sort(() => rand() - .5), xs = [0,330,560,800,1024];
+          for (let k=0;k<4;k++){ const [a,b,fg,bg] = order[k], x = xs[k], w = xs[k+1] - x;
+            const gr = g.createLinearGradient(x,0,x+w,360); gr.addColorStop(0,bg); gr.addColorStop(1,'#000'); g.fillStyle = gr; g.fillRect(x,0,w,360);
+            g.fillStyle = fg; g.textAlign = 'center'; g.font = `900 ${a.length > 12 ? 34 : 54}px Arial,sans-serif`; g.fillText(a, x + w/2, 170, w - 20);
+            g.font = '700 20px Arial,sans-serif'; g.fillText(b, x + w/2, 222, w - 20); g.fillStyle = '#000'; g.fillRect(x + w - 4, 0, 4, 360); }
+          adT.needsUpdate = true; };
+        sohoTick = t => { if (t - adAt > 4){ adAt = t; drawAds(); } };
+        const scr = new THREE.Mesh(new THREE.PlaneGeometry(32,11.2), new THREE.MeshBasicMaterial({map:adT, toneMapped:false})); scr.position.set(PICC.x - 5, 15, PICC.z - 62 + 12.15); fsc.add(scr);
+        const scrGlow = new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex, color:0xa0b8ff, transparent:true, opacity:.25, blending:THREE.AdditiveBlending, depthWrite:false})); scrGlow.position.set(PICC.x-5, 15, PICC.z-46); scrGlow.scale.set(60,30,1); fsc.add(scrGlow); }
+      // Leicester Square's garden, with a low railing round it
+      { lawn(120,100,-155,-212);
+        const rail = std(0x15171b,{metalness:.5,roughness:.4});
+        for (const [w,d,x,z] of [[52,.08,-191,-262],[52,.08,-119,-262],[52,.08,-191,-162],[52,.08,-119,-162],[.08,40,-215,-237],[.08,40,-215,-187],[.08,40,-95,-237],[.08,40,-95,-187]]) box(w,.9,d,rail,x,.45,z,fsc); }
+      // Soho Square, with its little mock-Tudor gardener's hut
+      { lawn(62,72,SSQ.x,SSQ.z);
+        const tudor = srgb(canvasTex(128,128,(g,w,h) => { g.fillStyle = '#efe8d8'; g.fillRect(0,0,w,h); g.fillStyle = '#2a1e16';
+          g.fillRect(0,0,w,8); g.fillRect(0,h-8,w,8); g.fillRect(0,0,8,h); g.fillRect(w-8,0,8,h); g.fillRect(w/2-4,0,8,h); g.fillRect(0,h/2-4,w,8);
+          g.save(); g.lineWidth = 6; g.strokeStyle = '#2a1e16'; g.beginPath(); g.moveTo(8,8); g.lineTo(w/2,h/2); g.lineTo(w-8,8); g.stroke(); g.restore(); }));
+        fb(6,3.4,6,std(0xffffff,{map:tudor,roughness:.9}),SSQ.x,1.7,SSQ.z);
+        const roof = new THREE.Mesh(new THREE.ConeGeometry(5.2,3.6,4), std(0x5a3a2a,{roughness:.9})); roof.rotation.y = Math.PI/4; roof.position.set(SSQ.x,5.2,SSQ.z); fsc.add(roof); }
+      // Chinatown: ornate gates at both ends of Gerrard Street, and red lanterns strung across it
+      { const red = std(0xb3121c,{roughness:.5}), greenT = std(0x1f6a4a,{roughness:.5}), goldT = std(0xd8b04a,{metalness:.6,roughness:.3,emissive:0x3a2a00});
+        for (const gx of [-336,-10]){ for (const dz of [-5.6,5.6]){ fb(.7,6.6,.7,red,gx,3.3,-380+dz); }
+          box(1,.6,13,red,gx,6.4,-380,fsc); box(2.4,.35,15,greenT,gx,7,-380,fsc); box(1.6,.3,11,greenT,gx,7.6,-380,fsc); box(.2,1.1,4,goldT,gx,5.4,-380,fsc); }
+        const lanternM = std(0xd8241c,{roughness:.4, emissive:0xff3018, emissiveIntensity:.4}); sohoLit.push(lanternM);
+        const lg = new THREE.SphereGeometry(.34,12,10); lg.scale(1,1.25,1);
+        const spots = []; for (let x=-325; x<-15; x+=9) for (const dz of [-2.6,0,2.6]) spots.push([x, 6.6 - (dz ? 0 : .35), -380 + dz]);
+        const L = new THREE.InstancedMesh(lg, lanternM, spots.length), d = new THREE.Object3D();
+        spots.forEach(([x,y,z],i) => { d.position.set(x,y,z); d.updateMatrix(); L.setMatrixAt(i, d.matrix); }); fsc.add(L);
+        const wire = []; for (let x=-325; x<-15; x+=9) wire.push(x,6.95,-384, x,6.65,-380, x,6.65,-380, x,6.95,-376);
+        const wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.Float32BufferAttribute(wire,3)); fsc.add(new THREE.LineSegments(wg, new THREE.LineBasicMaterial({color:0x222222}))); }
+      // Old Compton Street: rainbow bunting across the street
+      { const RB = [[.89,.01,.01],[1,.55,0],[1,.93,0],[0,.5,.15],[0,.3,1],[.46,.03,.53]], tri = [], col = [];
+        for (let x = regentX(-560) + 20; x < -12; x += 12) for (let k=0;k<6;k++){ const z = -563.5 + k*1.4, y = 6.6 - Math.sin((k+.5)/6*Math.PI)*.45;
+          tri.push(x,y,z-.6, x,y,z+.6, x,y-.75,z); for (let v=0;v<3;v++) col.push(...RB[k]); }
+        const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(tri,3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col,3)); g.computeVertexNormals();
+        fsc.add(new THREE.Mesh(g, new THREE.MeshStandardMaterial({vertexColors:true, side:THREE.DoubleSide, roughness:.8}))); }
+      // Carnaby Street's arch sign
+      { const cz = -700, post = std(0x15171b,{metalness:.5,roughness:.4});
+        for (const dx of [-5.6,5.6]) fb(.35,7.4,.35,post,-635+dx,3.7,cz);
+        const sign = new THREE.Mesh(new THREE.PlaneGeometry(10.4,1.5), new THREE.MeshBasicMaterial({side:THREE.DoubleSide, toneMapped:false, map:signTex(512,72,g => {
+          g.fillStyle = '#120a1a'; g.fillRect(0,0,512,72); g.fillStyle = '#ff4fd8'; g.font = '900 52px Arial,sans-serif'; g.textAlign = 'center'; g.fillText('CARNABY', 256, 56); })}));
+        sign.position.set(-635,6.6,cz); sign.rotation.y = Math.PI/2; fsc.add(sign); }
+    }
+    // Centre Point, the 1960s tower at St Giles Circus, where Oxford Street meets Charing Cross Road
+    { const cp = srgb(canvasTex(128,128,(g,w,h) => { g.fillStyle = '#cfccc4'; g.fillRect(0,0,w,h);
+        for (let y=0;y<h;y+=16) for (let x=0;x<w;x+=16){ g.fillStyle = '#3a4250'; g.fillRect(x+3,y+3,10,10); g.fillStyle = 'rgba(160,190,220,.3)'; g.fillRect(x+3,y+3,10,4); } }));
+      cp.wrapS = cp.wrapT = THREE.RepeatWrapping;
+      const lit = srgb(canvasTex(128,128,(g,w,h) => { g.fillStyle = '#000'; g.fillRect(0,0,w,h); for (let y=0;y<h;y+=16) for (let x=0;x<w;x+=16) if (rand() < .35){ g.fillStyle = '#ffe2a8'; g.fillRect(x+3,y+3,10,10); } }));
+      lit.wrapS = lit.wrapT = THREE.RepeatWrapping;
+      const m = std(0xffffff,{map:cp, emissive:0xffffff, emissiveMap:lit, emissiveIntensity:0, roughness:.8}); facadeMats.push(m);
+      building(28,-960,18,32,117,m); }
     // granite kerbs along every road edge, broken where another road joins
     { const kerbs = [], lamps = [];
       roads.forEach((r,ri) => { const ux = (r.x2-r.x1)/r.len, uz = (r.z2-r.z1)/r.len, a = Math.atan2(ux,uz);
@@ -2090,6 +2304,8 @@ function buildScene(){
       const inSJ = (x,z) => { const c = Math.cos(.37), s = Math.sin(.37), lx = (x-PARK_SJ.x)*c + (z-PARK_SJ.z)*s, lz = -(x-PARK_SJ.x)*s + (z-PARK_SJ.z)*c; return Math.abs(lx) < 380 && Math.abs(lz) < 150; };
       const inLake = (x,z) => { const c = Math.cos(.37), s = Math.sin(.37), lx = (x+520)*c + (z-330)*s, lz = -(x+520)*s + (z-330)*c; return (lx/280)**2 + (lz/60)**2 < 1; };
       lattice(-960,120,-150,480,30,(x,z) => inSJ(x,z) && !inLake(x,z));
+      lattice(-205,-255,-105,-170,24,() => true);                                   // Leicester Square
+      lattice(-298,-902,-252,-848,18,(x,z) => Math.hypot(x+275, z+875) > 9);      // Soho Square, round the hut
       lattice(-1320,-230,-950,270,32,() => true);
       lattice(-1400,400,-1060,830,36,() => true);
       for (let i=0;i<10;i++){ const a = i/10*Math.PI*2; tree(116 + Math.cos(a)*44, 945 + Math.sin(a)*36, .8); }
@@ -2220,7 +2436,7 @@ function buildScene(){
     const tommy = buildTommy(); ph.add(tommy.root); attachGLB(tommy);
     const shadow = addShadow(ph, 0, 0, 1.1, .9);
     const P = {x:5.6, z:-5, yaw:Math.PI*.5, camYaw:-Math.PI*.35, pitch:.32, walk:0, speed:0};
-    Object.assign(MAP, {roads, cols:cityCol, bankX});
+    Object.assign(MAP, {roads, cols:cityCol, obbs, bankX});
 
     /* ---- the real London sky in free roam: time of day and live weather (the PM's cutscene always stays at night) ---- */
     // Five looks keyed to the sun, with the weather on top, eased over a few seconds. At night the city's windows,
@@ -2302,6 +2518,9 @@ function buildScene(){
       const L = A.lights;
       for (const m of facadeMats) m.emissiveIntensity = L*1.1;
       for (const [m, kk] of floodMats) m.emissiveIntensity = L*kk;
+      for (const m of sohoMats) m.emissiveIntensity = .2 + L*1.5;
+      for (const m of sohoLit) m.emissiveIntensity = .4 + L*1.6;
+      sohoTick(t);
       if (lampHeadMat) lampHeadMat.emissiveIntensity = .1 + L*2.4;
       if (poolMat) poolMat.opacity = L*.65;
       for (const l of nightLights) l.intensity = l.userData.base*L;
@@ -2338,6 +2557,12 @@ function buildScene(){
       {name:'Cabinet Office', at:new THREE.Vector3(wx(396)-40,12,396), size:130, desc:"70 Whitehall, joined at the back to Number 10. The government is run from here: COBRA meets in its briefing rooms."},
       {name:'Portcullis House', at:new THREE.Vector3(phx,22,phz), size:95, desc:"Offices for MPs, opened in 2001 opposite Big Ben, crowned by fourteen bronze chimneys. Westminster tube station lies beneath it."},
       {name:'Westminster Station', at:new THREE.Vector3(TUBE[0].x,4,TUBE[0].z), size:24, desc:"Circle, District and Jubilee lines. The Jubilee line platforms sit deep beneath Portcullis House."},
+      {name:'Piccadilly Circus', at:new THREE.Vector3(-465,12,-277), size:120, desc:"Five busy streets meet beneath giant illuminated screens, around the winged statue everyone calls Eros, unveiled in 1893."},
+      {name:'Leicester Square', at:new THREE.Vector3(-155,10,-212), size:130, desc:"London's home of film premieres: a garden square ringed by cinemas, just north of Trafalgar Square."},
+      {name:'Chinatown', at:new THREE.Vector3(-175,7,-380), size:110, desc:"Gerrard Street and its neighbours, hung with red lanterns and entered through ornate gates, have been London's Chinatown since the 1970s."},
+      {name:'Soho Square', at:new THREE.Vector3(-275,6,-875), size:90, desc:"A leafy garden square laid out in the 1680s, with a little mock-Tudor gardener's hut at its centre."},
+      {name:'Carnaby Street', at:new THREE.Vector3(-635,6,-700), size:70, desc:"The pedestrian street at the heart of 1960s Swinging London, still famous for fashion."},
+      {name:'Centre Point', at:new THREE.Vector3(28,60,-960), size:140, desc:"The 117-metre tower at St Giles Circus, completed in 1966, where Oxford Street meets Charing Cross Road."},
       {name:'Trafalgar Square', at:new THREE.Vector3(0,26,15), size:110, desc:"Nelson's Column rises 52 metres over the square, guarded by four bronze lions by Sir Edwin Landseer, with the National Gallery behind."},
       {name:'Buckingham Palace', at:new THREE.Vector3(BP.x,14,BP.z), size:150, desc:"The King's London residence, at the end of The Mall beyond the Victoria Memorial."},
       {name:'London Eye', at:new THREE.Vector3(bankX(860)+300,70,860), size:160, desc:"The 135-metre wheel on the South Bank, opened in 2000, looking straight across the river at Parliament."},
@@ -2351,9 +2576,20 @@ function buildScene(){
     const hits = (x,z,r) => x < -13.7 || x > 9.7 || z < -7.7 || z > 7.7 || colliders.some(([a,b,c,d]) => x > a-r && x < c+r && z > b-r && z < d+r);
     // on the street: buildings, landmarks and the Thames (except over Westminster Bridge) block the way
     const onBridge = (x,z) => z > 954 && z < 976 && x < bankX(965)+266;
-    const hitsStatic = (x,z,r) => Math.abs(x) > 1500 || z < -800 || z > 1600
-      || (x > bankX(z)-6-r && x < bankX(z)+262+r && !onBridge(x,z))
-      || cityCol.some(([a,b,c,d]) => x > a-r && x < c+r && z > b-r && z < d+r);
+    // footprints are bucketed in 50 m cells (built once, after the city is), so a test only looks at what's nearby
+    const COLB = 50; let colIdx = null, colN = -1;
+    const colIndex = () => { if (colN === cityCol.length + obbs.length) return colIdx;
+      colN = cityCol.length + obbs.length; colIdx = new Map();
+      const put = (x1,z1,x2,z2,item) => { for (let i=Math.floor((x1-1)/COLB); i<=Math.floor((x2+1)/COLB); i++) for (let j=Math.floor((z1-1)/COLB); j<=Math.floor((z2+1)/COLB); j++){ const k = i*100003+j; let a = colIdx.get(k); if (!a) colIdx.set(k, a = []); a.push(item); } };
+      cityCol.forEach(c => put(c[0],c[1],c[2],c[3],c));
+      obbs.forEach(o => { const R = Math.hypot(o[2],o[3]); put(o[0]-R,o[1]-R,o[0]+R,o[1]+R,o); });
+      return colIdx; };
+    const hitsStatic = (x,z,r) => { if (Math.abs(x) > 1500 || z < -1150 || z > 1600 || (x > bankX(z)-6-r && x < bankX(z)+262+r && !onBridge(x,z))) return true;
+      const near = colIndex().get(Math.floor(x/COLB)*100003 + Math.floor(z/COLB)); if (!near) return false;
+      for (const c of near){
+        if (c.length === 4){ if (x > c[0]-r && x < c[2]+r && z > c[1]-r && z < c[3]+r) return true; }
+        else { const dx = x-c[0], dz = z-c[1], lx = dx*c[4] - dz*c[5], lz = dx*c[5] + dz*c[4]; if (Math.abs(lx) < c[2]+r && Math.abs(lz) < c[3]+r) return true; } }
+      return false; };
 
     /* ---- street life: cars, black cabs and buses driving on the left, people on the pavements ---- */
     // Everything is pooled around Tommy (within LIFE_R metres) and recycled out of sight as he moves.
@@ -2444,9 +2680,9 @@ function buildScene(){
             if (Math.hypot(o.x1-ex,o.z1-ez) < 12) out[e].push([j,1]);
             if (Math.hypot(o.x2-ex,o.z2-ez) < 12) out[e].push([j,-1]); } });
         return out; });
-      const near = (cx,cz,R,main) => { const out = new Set();
+      const near = (cx,cz,R,main,cars) => { const out = new Set();
         for (let i=Math.floor((cx-R)/BK); i<=Math.floor((cx+R)/BK); i++) for (let j=Math.floor((cz-R)/BK); j<=Math.floor((cz+R)/BK); j++)
-          for (const ri of buckets.get(i*10007+j) || []) if (!main || roads[ri].w >= 14) out.add(ri);
+          for (const ri of buckets.get(i*10007+j) || []) if ((!main || roads[ri].w >= 14) && !(roads[ri].ped && cars)) out.add(ri);
         return [...out]; };
       // where an agent on road ri, travelling dir, s metres along, with a sideways offset, stands
       const at = (a, out) => { const r = roads[a.ri], ux = (r.x2-r.x1)/r.len, uz = (r.z2-r.z1)/r.len, d = a.dir;
@@ -2456,7 +2692,7 @@ function buildScene(){
       const offFor = (a, r) => a.kind === 'ped' ? (r.w/2 + 2.6)*(a.side || 1) : a.bus || r.w < 14 ? r.w/4 : r.w/4 + (a.lane ? r.w/8 : -r.w/8)*.9;
       function spawn(a, cx, cz, rMin, rMax){
         for (let tries=0; tries<30; tries++){
-          const cand = near(cx, cz, rMax, a.bus); if (!cand.length) return false;
+          const cand = near(cx, cz, rMax, a.bus, a.kind !== 'ped'); if (!cand.length) return false;
           a.ri = cand[Math.floor(rand()*cand.length)]; const r = roads[a.ri];
           a.dir = rand() < .5 ? 1 : -1; a.s = rand()*r.len; a.lane = rand() < .5; a.side = rand() < .5 ? 1 : -1; a.off = offFor(a, r);
           at(a, tmp); const d = Math.hypot(tmp.x-cx, tmp.z-cz);
@@ -2468,7 +2704,7 @@ function buildScene(){
       }
       // at the end of a road: carry on along a joining road, else turn round
       function nextRoad(a){
-        const r = roads[a.ri], end = a.dir > 0 ? 1 : 0, opts = links[a.ri][end].filter(([j]) => !a.bus || roads[j].w >= 14);
+        const r = roads[a.ri], end = a.dir > 0 ? 1 : 0, opts = links[a.ri][end].filter(([j]) => (!a.bus || roads[j].w >= 14) && !(roads[j].ped && a.kind !== 'ped'));
         if (opts.length && rand() < .92){ const [j,dir] = opts[Math.floor(rand()*opts.length)]; a.ri = j; a.dir = dir; a.s = dir > 0 ? 0 : roads[j].len; }
         else { a.dir = -a.dir; a.s = a.dir > 0 ? 0 : r.len; }
         a.off = offFor(a, roads[a.ri]);
@@ -2617,6 +2853,7 @@ function buildScene(){
           skyStep(Math.min(dt, .1), t, sx, level === 'street' ? 0 : P0.y, sz); }
         // through the eyepiece, Tommy and the telescope itself would only block the view
         tele.visible = tommy.root.visible = state !== 'scope';
+        if (state !== 'scope' && camera.near !== .1){ camera.near = .1; camera.updateProjectionMatrix(); }
         if (level === 'street') for (const g of guards) idle(g, t, dt, [0,-.3,.3]);
         // the civil servants: wait (inside, or on the pavement), then walk the route in or out
         for (const f of servants){
@@ -2660,6 +2897,8 @@ function buildScene(){
         if (state === 'scope'){
           const lm = LANDMARKS[scopeI]; v3.set(TEL.x, 1.65, TEL.z).add(P0);
           camera.position.copy(v3); camera.lookAt(lm.at);
+          // through the eyepiece nothing on the terrace (plants, railings) can block the view: clip everything within 25 m
+          if (camera.near !== 25){ camera.near = 25; camera.updateProjectionMatrix(); }
           const dist = v3.distanceTo(lm.at), f = Math.max(3, Math.min(40, 2*Math.atan(lm.size*.6/dist)*180/Math.PI));
           if (Math.abs(camera.fov - f) > .01){ camera.fov += (f - camera.fov)*.12; camera.updateProjectionMatrix(); }
           drawMinimap(P, LANDMARKS, P0);
@@ -2776,6 +3015,7 @@ function buildScene(){
     // daylight London needs less exposure than the night-time menu and cutscene
     // the menu and free roam set their own exposure from the real sky; the PM's cutscene is always night
     if (mode === 'story') renderer.toneMappingExposure = 1.15;
+    if (mode !== 'free' && camera.near !== .1){ camera.near = .1; camera.updateProjectionMatrix(); }   // in case the telescope was left in use
     if (mode === 'story'){
       const dt = Math.min(.05,(now-last)/1000); last = now; storyT += dt;
       story.update(storyT, dt);
@@ -3085,7 +3325,7 @@ function freeScope(lm){
 }
 // minimap: a dark street map in the open-world style, north up. Markers are colour-coded by kind (government purple,
 // sights gold, the Eye teal, the Tube as a roundel); a light cone shows where the camera is looking.
-const BLIP = {'Portcullis House':'PC','Westminster Station':'U','10 Downing Street':'10','Cabinet Office':'CO','Big Ben':'BB','Houses of Parliament':'HP','Westminster Abbey':'WA','The Cenotaph':'C','Trafalgar Square':'TS','Buckingham Palace':'BP','London Eye':'LE'};
+const BLIP = {'Piccadilly Circus':'PI','Leicester Square':'LS','Chinatown':'CT','Soho Square':'SS','Carnaby Street':'CS','Centre Point':'CP','Portcullis House':'PC','Westminster Station':'U','10 Downing Street':'10','Cabinet Office':'CO','Big Ben':'BB','Houses of Parliament':'HP','Westminster Abbey':'WA','The Cenotaph':'C','Trafalgar Square':'TS','Buckingham Palace':'BP','London Eye':'LE'};
 const BLIP_KIND = {'10 Downing Street':'gov','Cabinet Office':'gov','Houses of Parliament':'gov','Portcullis House':'gov','Westminster Station':'tube','London Eye':'eye'};
 // the accent follows the time of day, so it's read from CSS (at most once a second)
 let accentCache = '#A35CF0', accentAt = -1e9;
@@ -3189,6 +3429,9 @@ function drawCityMap(P, M, landmarks){
   // buildings, with a lighter top edge so blocks read as solid
   for (const [a,b,cc,d] of M.cols){ if (cc < P.x-V || a > P.x+V || d < P.z-V || b > P.z+V || cc-a < 1.5) continue;
     g.fillStyle = '#4a5060'; g.fillRect(X(a),Z(b),(cc-a)*s,(d-b)*s); g.fillStyle = '#5d6475'; g.fillRect(X(a),Z(b),(cc-a)*s,Math.min(2,(d-b)*s)); }
+  g.fillStyle = '#4a5060';
+  for (const [cx,cz,hw,hd,c,sn] of M.obbs){ if (Math.abs(cx-P.x) > V+20 || Math.abs(cz-P.z) > V+20) continue;
+    g.save(); g.translate(X(cx),Z(cz)); g.rotate(-Math.atan2(sn,c)); g.fillRect(-hw*s,-hd*s,hw*2*s,hd*2*s); g.restore(); }
   mapPlayer(g, R, P);
   g.restore();
   mapRim(g, R);
