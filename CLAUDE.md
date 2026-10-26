@@ -62,7 +62,8 @@ A game starring Tommy (no last name), set in Westminster, London.
   - Tommy is **not** asleep. A woman behind the door teases him: "You're such a naughty man, Tommy" (5 lines in `HER_LINES`). Keep it suggestive, never explicit.
   - Andreas has swept-up grey hair, big round eyes, a dark maroon suit, a white shirt, a blue tie, a gold belt buckle and black trousers.
   - His 10 lines are in `LINES`. The key line is "I am willing to help end the war on crime." Camera shots are in `SHOTS` / `LINE_SHOTS`.
-- After the woman's lines comes a "The next day" card, then **free roam** in Tommy's penthouse (`buildFree`).
+- After the woman's lines comes a "The next day" card, then **free roam** in Tommy's home (`buildFree`).
+  - **Naming (user's rule):** in anything the player sees, it's **"Tommy's apartment complex"** (his home is "the apartment"), never "penthouse". The code and these notes still say penthouse (`ph`, `P0`, the `tommy-save` marker), which is fine.
   - The penthouse sits 110 m up a tower at world (200, 380). The world is in metres: +x east, +z south, Trafalgar Square at the origin.
   - Central London is laid out with roughly real geography: Trafalgar Square (Nelson's Column, lions, fountains, National Gallery, St Martin-in-the-Fields), Admiralty Arch and The Mall, the Victoria Memorial, Buckingham Palace, Whitehall with Horse Guards and the Cenotaph, Parliament Square, Big Ben, the Palace of Westminster, Westminster Abbey, the Thames, Westminster Bridge, the London Eye and County Hall, plus St James's Park and Green Park.
   - Controls: WASD/arrows to move, Shift to run, drag to turn the camera, E to interact, Esc to pause.

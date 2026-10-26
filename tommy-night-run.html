@@ -310,7 +310,7 @@ body.in-story .ui,body.in-story .shade{display:none}
 <div class="titlecard" id="endCard" hidden><span>Story Mode</span><h2>The next day</h2></div>
 
 <div class="roam" id="roam" hidden>
-  <div class="objective"><b>Tommy's penthouse</b><span id="objText">You're awake. Explore the penthouse, then find the telescope on the terrace.</span></div>
+  <div class="objective"><b>Tommy's apartment complex</b><span id="objText">You're awake. Explore the apartment, then find the telescope on the terrace.</span></div>
   <canvas class="minimap" id="minimap" width="200" height="200" aria-label="Minimap"></canvas>
   <div class="hint" id="hint" hidden><kbd>E</kbd><span id="hintText"></span></div>
   <div class="prompts roam-prompts">
@@ -2956,7 +2956,7 @@ function buildScene(){
           talkT -= dt;
           const atTube = !nearWhat && TUBE.some(e => Math.hypot(P.x - e.x - (e.face === 'e' ? 2 : 0), P.z - e.z - (e.face === 's' ? 2 : 0)) < 3.5);
           if (atTube){ freeHint('Westminster Station · Circle, District and Jubilee lines', true); drawCityMap(P, MAP, LANDMARKS); return; }
-          freeHint(nearWhat === 'lift' ? 'Take the lift up to the penthouse' : nearWhat === 'gate' ? (talkT > 0 ? GUARD_LINES[talkI] : 'Talk to the armed officer') : null, nearWhat === 'gate' && talkT > 0);
+          freeHint(nearWhat === 'lift' ? "Take the lift up to Tommy's apartment" : nearWhat === 'gate' ? (talkT > 0 ? GUARD_LINES[talkI] : 'Talk to the armed officer') : null, nearWhat === 'gate' && talkT > 0);
           drawCityMap(P, MAP, LANDMARKS);
         } else {
           nearWhat = Math.hypot(P.x-TEL.x, P.z-TEL.z) < 1.6 ? 'scope' : Math.hypot(P.x-LIFT.x, P.z-LIFT.z) < 1.4 ? 'lift' : (P.z < -4.4 && Math.abs(P.x+3) < 2.3 ? 'tv' : null);
@@ -3089,7 +3089,7 @@ function valueHtml(r){
   return '';
 }
 function render(focus = true){
-  Object.assign(MENUS.main.rows[1], progress ? {off:false, desc:"Back to Tommy's penthouse."} : {off:true, desc:'No saved game found.'});
+  Object.assign(MENUS.main.rows[1], progress ? {off:false, desc:"Back to Tommy's apartment complex."} : {off:true, desc:'No saved game found.'});
   const id = cur(), m = MENUS[id], i = sel[id];
   $('menuTitle').textContent = m.title;
   $('menuSub').textContent = id === 'main' ? 'Main Menu' : m.title;
@@ -3292,8 +3292,8 @@ function enterRoam(wake){
   scene3d.roam(wake);
   Object.assign(roam, {active:true, paused:false});
   $('roam').hidden = false;
-  $('objText').textContent = wake ? "You're awake. Explore the penthouse, then find the telescope on the terrace." : 'Explore the penthouse. The telescope on the terrace looks out over London.';
-  $('roam').querySelector('.objective b').textContent = "Tommy's penthouse";
+  $('objText').textContent = wake ? "You're awake. Explore the apartment, then find the telescope on the terrace." : 'Explore the apartment. The telescope on the terrace looks out over London.';
+  $('roam').querySelector('.objective b').textContent = "Tommy's apartment complex";
   saveProgress({at:'penthouse'});
   fadeTo(false);
 }
@@ -3402,7 +3402,7 @@ async function roamInteract(){
   roam.riding = true; input.keys.clear();
   await fadeTo(true);
   const lvl = api.travel();
-  $('roam').querySelector('.objective b').textContent = lvl === 'street' ? 'Central London' : "Tommy's penthouse";
+  $('roam').querySelector('.objective b').textContent = lvl === 'street' ? 'Central London' : "Tommy's apartment complex";
   $('objText').textContent = lvl === 'street'
     ? 'Explore London on foot. Whitehall, Trafalgar Square and Big Ben are all close by. The lift back up is at the tower door.'
     : 'Back home. The telescope on the terrace looks out over London.';
