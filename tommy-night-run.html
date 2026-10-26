@@ -1679,19 +1679,41 @@ function buildScene(){
           }
           for (const a of peds){
             if (!a.g.visible || Math.hypot(a.g.position.x-cx, a.g.position.z-cz) > LIFE_R*.7){ a.g.visible = spawn(a, cx, cz, LIFE_R*.35, LIFE_R*.65); continue; }
-            // step round Tommy: pause when he's right in the way
-            const dT = Math.hypot(tx-a.g.position.x, tz-a.g.position.z), yaw = a.g.rotation.y;
-            const blocked = dT < 1.3 && (tx-a.g.position.x)*Math.sin(yaw) + (tz-a.g.position.z)*Math.cos(yaw) > 0;
-            const v = blocked ? 0 : a.speed;
+            // look ahead for Tommy and other people: sidestep them (keeping left), or slow behind someone in the way
+            const yaw = a.g.rotation.y, fx = Math.sin(yaw), fz = Math.cos(yaw), px = a.g.position.x, pz = a.g.position.z;
+            let v = a.speed, want = 0;
+            const look = (ox, oz, ov) => { const dx = ox-px, dz = oz-pz, f = dx*fx + dz*fz, l = dx*fz - dz*fx;
+              if (f <= 0 || f > 2.6 || Math.abs(l) > .9) return;
+              want = l > .05 ? -.9 : .9;
+              if (f < 1.1) v = Math.min(v, ov); };
+            look(tx, tz, 0);
+            for (const o of peds) if (o !== a && o.g.visible && Math.abs(o.g.position.x-px) < 2.6 && Math.abs(o.g.position.z-pz) < 2.6) look(o.g.position.x, o.g.position.z, o.v ?? o.speed);
+            a.v = v;
+            const dd = want - (a.dodge || 0); a.dodge = (a.dodge || 0) + Math.sign(dd)*Math.min(Math.abs(dd), dt*1.6);
             a.s += v*dt*a.dir;
             if (a.s < 0 || a.s > roads[a.ri].len) nextRoad(a);
             at(a, tmp);
             if (hitsStatic(tmp.x, tmp.z, .3)){ a.dir = -a.dir; a.s += a.dir*v*dt*2; at(a, tmp); }
+            // the sidestep, unless it would put them into a wall
+            const sx = tmp.x + Math.cos(tmp.yaw)*a.dodge, sz = tmp.z - Math.sin(tmp.yaw)*a.dodge;
+            if (!hitsStatic(sx, sz, .3)){ tmp.x = sx; tmp.z = sz; } else a.dodge *= .9;
             const k = Math.min(1, dt*4); a.g.position.x += (tmp.x - a.g.position.x)*k; a.g.position.z += (tmp.z - a.g.position.z)*k;
             turnTo(a.g, tmp.yaw, Math.min(1, dt*6));
-            a.phase += dt*v*4.2; const sw = Math.sin(a.phase)*(v ? .5 : 0);
+            a.phase += dt*v*4.2; const sw = Math.sin(a.phase)*Math.min(1, v/a.speed)*.5;
             a.legs[0].rotation.x = sw; a.legs[1].rotation.x = -sw; a.arms[0].rotation.x = -sw*.8; a.arms[1].rotation.x = sw*.8;
           }
+          // nobody overlaps: push apart any two people closer than shoulder to shoulder, and people off Tommy
+          const PED = .62;
+          const shove = (a, dx, dz, d) => { const nx = a.g.position.x + dx*d, nz = a.g.position.z + dz*d; if (!hitsStatic(nx, nz, .25)){ a.g.position.x = nx; a.g.position.z = nz; } };
+          for (let i=0; i<peds.length; i++){ const a = peds[i]; if (!a.g.visible) continue;
+            const tdx = a.g.position.x - tx, tdz = a.g.position.z - tz, td = Math.hypot(tdx, tdz);
+            if (td < .3 + .34 && td > 1e-4) shove(a, tdx/td, tdz/td, .64 - td);
+            for (let j=i+1; j<peds.length; j++){ const b = peds[j]; if (!b.g.visible) continue;
+              const dx = a.g.position.x - b.g.position.x, dz = a.g.position.z - b.g.position.z;
+              if (Math.abs(dx) > PED || Math.abs(dz) > PED) continue;
+              let d = Math.hypot(dx, dz); if (d >= PED) continue;
+              const nx = d > 1e-4 ? dx/d : 1, nz = d > 1e-4 ? dz/d : 0, push = (PED - d)/2;
+              shove(a, nx, nz, push); shove(b, -nx, -nz, push); } }
         },
         // Tommy can't walk through cars or people
         blocks(x,z,r){
