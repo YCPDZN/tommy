@@ -1387,39 +1387,51 @@ function buildScene(){
   function buildFree(){
     const fsc = new THREE.Scene();
     fsc.fog = new THREE.Fog(0xc9d8e6, 600, 3400);
-    // sky: a blue gradient with a sun glow and slowly drifting fbm clouds. uEnv renders the same sky (with a city-grey
-    // ground below the horizon, in linear light) into the environment map that glass, paint and water reflect.
-    const SUN_DIR = new THREE.Vector3(480,430,260).normalize();   // mid-morning sun, about 38° up, from the south-east
+    // sky: horizon-to-zenith gradient, the sun's glow and disc, stars and the moon at night, and fbm clouds whose cover
+    // follows the live weather. Its uniforms are shared with an environment copy (uEnv: a city-grey ground below the
+    // horizon, in linear light) that PMREM bakes into the reflections on glass, paint and water.
+    const SUN_DIR = new THREE.Vector3(480,430,260).normalize();   // the shadow-casting light's direction: the sun, or the moon at night
+    const MOON_DIR = new THREE.Vector3(-.35,.5,.79).normalize();   // a fixed moon, high in the south-west
+    const SKYU = {uSun:{value:new THREE.Vector3().copy(SUN_DIR)}, uSunCol:{value:new THREE.Color(0xfff4e0)}, uSunAmt:{value:1},
+      uTop:{value:new THREE.Color(.30,.52,.82)}, uHor:{value:new THREE.Color(.79,.85,.9)}, uCloud:{value:.3}, uCloudCol:{value:new THREE.Color(1,1,1)},
+      uStars:{value:0}, uMoon:{value:0}, uMoonDir:{value:MOON_DIR}, uTime:{value:0}, uFlash:{value:0}};
     const skyShader = env => new THREE.ShaderMaterial({side:THREE.BackSide, depthWrite:false, depthTest:!!env, fog:false,
-      uniforms:{uSun:{value:SUN_DIR}, uTime:{value:0}, uEnv:{value:env ? 1 : 0}},
+      uniforms:Object.assign({uEnv:{value:env ? 1 : 0}}, SKYU),
       vertexShader:'varying vec3 vP;void main(){vP=normalize(position);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
-      fragmentShader:`uniform vec3 uSun;uniform float uTime,uEnv;varying vec3 vP;
+      fragmentShader:`uniform vec3 uSun,uSunCol,uTop,uHor,uCloudCol,uMoonDir;uniform float uSunAmt,uCloud,uStars,uMoon,uTime,uFlash,uEnv;varying vec3 vP;
         float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
         float n(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h(i),h(i+vec2(1,0)),f.x),mix(h(i+vec2(0,1)),h(i+vec2(1,1)),f.x),f.y);}
         float fbm(vec2 p){float v=0.,a=.5;for(int i=0;i<5;i++){v+=a*n(p);p*=2.03;a*=.5;}return v;}
         void main(){vec3 d=normalize(vP);float y=clamp(d.y,0.,1.);
-          vec3 col=mix(vec3(.79,.85,.9),vec3(.30,.52,.82),smoothstep(0.,.45,y));
+          vec3 col=mix(uHor,uTop,smoothstep(0.,.45,y));
           float s=max(dot(d,uSun),0.);
-          col+=vec3(1.,.9,.72)*(pow(s,8.)*.22+pow(s,90.)*.5)+vec3(1.,.97,.9)*smoothstep(.9993,.9997,s)*1.6;
-          if(d.y>0.){vec2 uv=d.xz/(d.y+.12)*1.3+vec2(uTime*.006,uTime*.002);
-            float c=smoothstep(.5,.8,fbm(uv))*smoothstep(0.,.2,d.y);
-            vec3 cc=mix(vec3(.7,.74,.8),vec3(1.),smoothstep(.45,.9,fbm(uv*1.7+.35)))+vec3(1.,.9,.7)*pow(s,6.)*.35;
-            col=mix(col,cc,c*.85);}
+          col+=uSunCol*uSunAmt*(pow(s,8.)*.25+pow(s,90.)*.5+smoothstep(.9993,.9997,s)*1.6);
+          if(uStars>.01&&d.y>0.){vec2 g=floor(vec2(atan(d.z,d.x),d.y)*600.);float st=step(.9986,h(g));col+=vec3(.9,.93,1.)*st*uStars*(.5+.5*h(g+7.))*smoothstep(0.,.25,d.y);}
+          float m=max(dot(d,uMoonDir),0.);col+=vec3(1.,.97,.9)*uMoon*(smoothstep(.99955,.9997,m)*1.1+pow(m,300.)*.12+pow(m,12.)*.04);
+          if(d.y>0.&&uCloud>.001){vec2 uv=d.xz/(d.y+.12)*1.3+vec2(uTime*.006,uTime*.002);
+            float c=smoothstep(1.-uCloud*.95,1.25-uCloud*.9,fbm(uv))*smoothstep(0.,.2,d.y);
+            vec3 cc=uCloudCol*(.78+.4*fbm(uv*1.7+.35))+uSunCol*uSunAmt*pow(s,6.)*.35;
+            col=mix(col,cc,c*min(1.,.45+uCloud));}
+          col+=vec3(.8,.85,1.)*uFlash;
           // the environment render target has its own encoding (RGBE on many devices), so write through three's encoder
-          if(uEnv>.5){col=mix(col,vec3(.42,.4,.37),smoothstep(0.,-.12,d.y));gl_FragColor=linearToOutputTexel(vec4(pow(col,vec3(2.2)),1.));}
+          if(uEnv>.5){col=mix(col,vec3(.42,.4,.37)*(.25+.75*smoothstep(0.,.4,uSunAmt)),smoothstep(0.,-.12,d.y));gl_FragColor=linearToOutputTexel(vec4(pow(col,vec3(2.2)),1.));}
           else gl_FragColor=vec4(col,1.);}`});
     const skyMat = skyShader(false);
     fsc.add(Object.assign(new THREE.Mesh(new THREE.SphereGeometry(3800,48,24), skyMat), {renderOrder:-1}));
-    { const pmrem = new THREE.PMREMGenerator(renderer), envScene = new THREE.Scene();
-      envScene.add(new THREE.Mesh(new THREE.SphereGeometry(50,48,24), skyShader(true)));
-      fsc.environment = pmrem.fromScene(envScene, .02).texture; pmrem.dispose(); }
-    fsc.add(new THREE.HemisphereLight(0xe2ecff, 0x6b6450, .38));
-    // the sun casts real shadows in a box that follows Tommy (sized by the quality setting, see setQuality)
+    // reflections are re-baked whenever the sky changes (time of day or weather), not every frame
+    const pmrem = new THREE.PMREMGenerator(renderer), envScene = new THREE.Scene(); let envRT = null;
+    envScene.add(new THREE.Mesh(new THREE.SphereGeometry(50,48,24), skyShader(true)));
+    const bakeEnv = () => { const rt = pmrem.fromScene(envScene, .02); if (envRT) envRT.dispose(); envRT = rt; fsc.environment = rt.texture; };
+    bakeEnv();
+    const hemi = new THREE.HemisphereLight(0xe2ecff, 0x6b6450, .38); fsc.add(hemi);
+    // the sun (or moon) casts real shadows in a box that follows Tommy (sized by the quality setting, see setQuality)
     const sun = new THREE.DirectionalLight(0xfff0d6, 1.4); sun.position.copy(SUN_DIR).multiplyScalar(700); fsc.add(sun, sun.target);
     sun.shadow.mapSize.set(2048,2048); sun.shadow.bias = -.0004; sun.shadow.normalBias = .05;
     Object.assign(sun.shadow.camera, {near:1, far:1100}); let shadowR = 75;
     // keep the shadow box locked to whole shadow-map texels as it moves, so edges don't crawl
-    const sunBasis = new THREE.Matrix4().lookAt(SUN_DIR, new THREE.Vector3(), new THREE.Vector3(0,1,0)), sunInv = sunBasis.clone().transpose(), sv = new THREE.Vector3();
+    const sunBasis = new THREE.Matrix4(), sunInv = new THREE.Matrix4(), sv = new THREE.Vector3();
+    const setLightDir = v => { SUN_DIR.copy(v); sunBasis.lookAt(SUN_DIR, new THREE.Vector3(), new THREE.Vector3(0,1,0)); sunInv.copy(sunBasis).transpose(); };
+    setLightDir(SUN_DIR);
     const followSun = (x,y,z) => { const texel = 2*shadowR/sun.shadow.mapSize.x; sv.set(x,y,z).applyMatrix4(sunInv);
       sv.x = Math.round(sv.x/texel)*texel; sv.y = Math.round(sv.y/texel)*texel; sv.applyMatrix4(sunBasis);
       sun.target.position.copy(sv); sun.position.copy(sv).addScaledVector(SUN_DIR, 700); };
@@ -1433,7 +1445,10 @@ function buildScene(){
       for (let f=0; f<6; f++) for (let v=0; v<4; v++){ const i = f*4+v; uv.setXY(i, uv.getX(i)*dims[f][0]/12, uv.getY(i)*dims[f][1]/12); } return g; }
     // facades: 12 m tiles (four 3 m bays by four 3 m floors) at 256 px, with matching maps so the stone is matt, the
     // glass glossy enough to reflect the sky, and a bump map for recessed windows, sills, stone courses and floor bands
-    const facadeOf = (base, win, frame, curtain=false) => {
+    // at night about a third of the windows light up (warm or cool white); `flood` adds a floodlit glow to the stone
+    const facadeMats = [], floodMats = [], wetMats = [];   // night: facades and floodlit landmarks; rain: glossy ground
+    let lampHeadMat = null, poolMat = null;
+    const facadeOf = (base, win, frame, curtain=false, flood=false) => {
       const S = 256, B = 64, tex = draw => { const t = canvasTex(S,S,draw); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; return t; };
       const wins = []; for (let f=0; f<4; f++) for (let b=0; b<4; b++) wins.push(curtain ? [b*B+2, f*B+10, B-4, B-12] : [b*B+18, f*B+16, 28, 34]);
       const bars = (g,[x,y,w,h]) => { g.fillRect(x+w/2-1,y,2,h); g.fillRect(x,y+Math.round(h*.35),w,2); };
@@ -1458,7 +1473,10 @@ function buildScene(){
         for (const w of wins){ const [x,y,ww,hh] = w;
           if (!curtain){ g.fillStyle = '#a0a0a0'; g.fillRect(x-4,y-4,ww+8,hh+6); g.fillStyle = '#d4d4d4'; g.fillRect(x-6,y+hh+2,ww+12,5); }
           g.fillStyle = curtain ? '#6a6a6a' : '#262626'; g.fillRect(x,y,ww,hh); g.fillStyle = '#5a5a5a'; if (!curtain) bars(g,w); } });
-      return std(0xffffff,{map, roughnessMap:orm, metalnessMap:orm, bumpMap:bump, bumpScale:.05, roughness:1, metalness:1}); };
+      const lit = srgb(tex(g => { g.fillStyle = flood ? '#6a4a1c' : '#000'; g.fillRect(0,0,S,S);
+        for (const [x,y,ww,hh] of wins){ const r = rand(); if (r < .38){ g.globalAlpha = .55 + rand()*.45; g.fillStyle = r < .3 ? '#ffcf86' : '#d6e6ff'; g.fillRect(x,y,ww,hh); g.globalAlpha = 1; } } }));
+      const m = std(0xffffff,{map, roughnessMap:orm, metalnessMap:orm, bumpMap:bump, bumpScale:.05, roughness:1, metalness:1, emissive:0xffffff, emissiveMap:lit, emissiveIntensity:0});
+      facadeMats.push(m); return m; };
     const PORTLAND = facadeOf('#ddd5c2','#5d6c7c','#cfc6b0'), BRICK = facadeOf('#9a5a44','#4d5866','#e0d8c8'), GLASS = facadeOf('#5b6d80','#4f6c86','#3a4654',true), CREAM = facadeOf('#e8e0cc','#66707c','#d8cfb8');
     const bmats = [PORTLAND, PORTLAND, CREAM, BRICK, GLASS];
     const trims = [];   // plinth, string course and cornice for every building, instanced at the end of buildFree
@@ -1466,7 +1484,7 @@ function buildScene(){
     const stone = std(0xe2dac6,{roughness:.85}), stoneDark = std(0xb8af9a), bronze = std(0x3f4a3a,{metalness:.5,roughness:.5}), goldM = std(0xd8b04a,{metalness:.8,roughness:.3,emissive:0x3a2a00});
     const grassTex = srgb(canvasTex(128,128,(g,w,h)=>{g.fillStyle='#5d8a3c';g.fillRect(0,0,w,h);for(let i=0;i<2600;i++){const v=rand();g.fillStyle=v<.5?'rgba(40,70,25,.35)':'rgba(140,180,90,.3)';g.fillRect(rand()*w,rand()*h,2,2);}}));
     grassTex.wrapS = grassTex.wrapT = THREE.RepeatWrapping; grassTex.repeat.set(1/6,1/6);
-    const grass = std(0xffffff,{map:grassTex,roughness:1}), paving = std(0xa39d90,{roughness:.9});
+    const grass = std(0xffffff,{map:grassTex,roughness:1}), paving = std(0xa39d90,{roughness:.9}); wetMats.push(paving);
     // the Thames: the user's water texture tiling every 70 m, with a ripple normal map; both drift in update()
     const waterTex = new THREE.TextureLoader().load('assets/water.jpg'); waterTex.encoding = THREE.sRGBEncoding;
     waterTex.wrapS = waterTex.wrapT = THREE.RepeatWrapping; waterTex.repeat.set(1/70,1/70); waterTex.anisotropy = 8;
@@ -1477,7 +1495,7 @@ function buildScene(){
     slabTex.wrapS = slabTex.wrapT = THREE.RepeatWrapping; slabTex.repeat.set(1/4.8,1/4.8); slabTex.anisotropy = 8;
 
     // ground, river Thames, parks
-    { const gnd = new THREE.Mesh(new THREE.PlaneGeometry(6000,6000), std(0xffffff,{map:slabTex,roughness:.95})); gnd.rotation.x = -Math.PI/2; gnd.position.set(300,0,300);
+    { const gnd = new THREE.Mesh(new THREE.PlaneGeometry(6000,6000), std(0xffffff,{map:slabTex,roughness:.95})); wetMats.push(gnd.material); gnd.rotation.x = -Math.PI/2; gnd.position.set(300,0,300);
       const uv = gnd.geometry.attributes.uv; for (let i=0;i<uv.count;i++) uv.setXY(i, uv.getX(i)*6000, uv.getY(i)*6000); fsc.add(gnd); }
     const bankX = z => z < 150 ? 430 + (150-z)*.3 : z < 700 ? 430 - (z-150)*.18 : z < 1000 ? 331 - (z-700)*.1 : 301 + (z-1000)*.05;
     { const sh = new THREE.Shape(), pts = [];
@@ -1623,14 +1641,14 @@ function buildScene(){
 
     /* ---- Parliament Square, Big Ben, the Palace of Westminster, Westminster Abbey ---- */
     const BB = new THREE.Vector3(275, 0, 968);
-    { const st2 = std(0xd9c79a,{roughness:.85}), slate2 = std(0x5a6a7a,{metalness:.2});
+    { const st2 = std(0xd9c79a,{roughness:.85,emissive:0xffb050,emissiveIntensity:0}), slate2 = std(0x5a6a7a,{metalness:.2}); floodMats.push([st2,.35]);
       fb(12,62,12,st2,BB.x,31,BB.z); fb(15,16,15,st2,BB.x,70,BB.z); fb(12,10,12,st2,BB.x,83,BB.z);
       const roof = new THREE.Mesh(new THREE.ConeGeometry(9.5,20,4), slate2); roof.rotation.y = Math.PI/4; roof.position.set(BB.x,98,BB.z); fsc.add(roof);
       const sp = new THREE.Mesh(new THREE.ConeGeometry(.8,8,6), goldM); sp.position.set(BB.x,112,BB.z); fsc.add(sp);
       const faceMat = new THREE.MeshBasicMaterial({map:clockTex}); const geo = new THREE.CircleGeometry(5.6,40);
       [[0,7.6,0],[0,-7.6,Math.PI],[7.6,0,Math.PI/2],[-7.6,0,-Math.PI/2]].forEach(f => { const c = new THREE.Mesh(geo,faceMat); c.position.set(BB.x+f[0],70,BB.z+f[1]); c.rotation.y = f[2]; fsc.add(c); });
       // the Palace of Westminster runs south along the river to the Victoria Tower
-      const palace = facadeOf('#d6c393','#6a5a3a','#c8b27e');
+      const palace = facadeOf('#d6c393','#6a5a3a','#c8b27e',false,true);
       building(262,1120,50,290,26,palace);
       const pin = new THREE.InstancedMesh(new THREE.ConeGeometry(.6,6,6), st2, 200); const d = new THREE.Object3D(); let n = 0;
       for (let z=980; z<=1262; z+=6) for (const x of [237,287]){ d.position.set(x,29,z); d.updateMatrix(); pin.setMatrixAt(n++, d.matrix); }
@@ -1643,7 +1661,7 @@ function buildScene(){
     // Westminster Bridge, the London Eye and County Hall on the South Bank
     fb(272,2,26,std(0x3e6a55),bankX(965)+130,6,965); fb(272,2.5,26,std(0x2c4a3e),bankX(965)+130,4.2,965);
     { const eye = new THREE.Group(); eye.position.set(bankX(860)+300, 70, 860); eye.rotation.y = Math.PI/2 - .3; fsc.add(eye);
-      const wm = std(0xf2f4f6,{metalness:.5,roughness:.4});
+      const wm = std(0xf2f4f6,{metalness:.5,roughness:.4,emissive:0x6a7cff,emissiveIntensity:0}); floodMats.push([wm,.9]);
       eye.add(new THREE.Mesh(new THREE.TorusGeometry(63,.8,8,96), wm)); eye.add(new THREE.Mesh(new THREE.TorusGeometry(60,.4,6,96), wm));
       const pts = []; for (let i=0;i<32;i++){ const a=i/32*Math.PI*2; pts.push(new THREE.Vector3(0,0,0), new THREE.Vector3(Math.cos(a)*63,Math.sin(a)*63,0)); }
       eye.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({color:0xdde3ea})));
@@ -1720,6 +1738,7 @@ function buildScene(){
       if (lanes >= 4) for (const x of [w*.27, w*.73]) for (let y=0; y<h; y+=128) g.fillRect(x-2, y+40, 4, 44);
     })); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; return t; };
     const TARMAC2 = std(0xffffff,{map:tarmacTex(2,'#3a3b3f'),roughness:.85}), TARMAC4 = std(0xffffff,{map:tarmacTex(4,'#37383c'),roughness:.85}), MALL = std(0xffffff,{map:tarmacTex(2,'#9c5446'),roughness:.9});
+    wetMats.push(TARMAC2, TARMAC4, MALL);
     // Roads that overlap (junctions, joined segments) sit on separate layers a few millimetres apart, never coplanar:
     // north-south side streets, then east-west ones, then the main roads cycling through three layers.
     const roads = [], buckets = new Map(), BK = 100; let roadY = .05, mainN = 0;
@@ -1782,7 +1801,12 @@ function buildScene(){
       // black London lamp posts with lanterns
       const poleGeo = new THREE.CylinderGeometry(.07,.12,5.6,8); poleGeo.translate(0,2.8,0);
       const poleIM = new THREE.InstancedMesh(poleGeo, std(0x15171b,{metalness:.5,roughness:.4}), lamps.length);
-      const headIM = new THREE.InstancedMesh(new THREE.CylinderGeometry(.24,.16,.5,6), std(0xf6e7c0,{emissive:0x5a4a20,roughness:.3}), lamps.length);
+      const headIM = new THREE.InstancedMesh(new THREE.CylinderGeometry(.24,.16,.5,6), lampHeadMat = std(0xf6e7c0,{emissive:0xffd9a0,emissiveIntensity:.1,roughness:.3}), lamps.length);
+      // at night each lamp throws a warm pool of light on the pavement (above every road layer, under Tommy's shadow)
+      poolMat = new THREE.MeshBasicMaterial({map:glowTex, color:0xffc070, transparent:true, opacity:0, blending:THREE.AdditiveBlending, depthWrite:false});
+      const poolGeo = new THREE.PlaneGeometry(10,10); poolGeo.rotateX(-Math.PI/2);
+      const poolIM = new THREE.InstancedMesh(poolGeo, poolMat, lamps.length); poolIM.renderOrder = 1;
+      lamps.forEach(([x,z],i) => { d.rotation.set(0,0,0); d.position.set(x,.118,z); d.updateMatrix(); poolIM.setMatrixAt(i,d.matrix); }); fsc.add(poolIM);
       lamps.forEach(([x,z],i) => { d.rotation.set(0,0,0); d.position.set(x,0,z); d.updateMatrix(); poleIM.setMatrixAt(i,d.matrix); d.position.set(x,5.85,z); d.updateMatrix(); headIM.setMatrixAt(i,d.matrix); cityCol.push([x-.2,z-.2,x+.2,z+.2]); });
       kerbIM.userData.noCast = true; fsc.add(kerbIM, poleIM, headIM); }
     // zebra crossings with Belisha beacons
@@ -1940,6 +1964,107 @@ function buildScene(){
     const tommy = buildTommy(); ph.add(tommy.root); attachGLB(tommy);
     const shadow = addShadow(ph, 0, 0, 1.1, .9);
     const P = {x:5.6, z:-5, yaw:Math.PI*.5, camYaw:-Math.PI*.35, pitch:.32, walk:0, speed:0};
+
+    /* ---- the real London sky in free roam: time of day and live weather (the PM's cutscene always stays at night) ---- */
+    // Five looks keyed to the sun, with the weather on top, eased over a few seconds. At night the city's windows,
+    // street lamps and their pools of light, floodlit Big Ben and Parliament, the London Eye and the penthouse light up.
+    const FREE_SKY = {
+      day:     {top:0x4d85d1,hor:0xc9d9e6,sunCol:0xfff4e0,cloudCol:0xf4f6f9,fog:0xc9d8e6,fogNear:600,fogFar:3400,hemiSky:0xe2ecff,hemiGround:0x6b6450,hemiInt:.38,keyCol:0xfff0d6,keyInt:1.4, stars:0,  moon:0,  lights:0,   exposure:.8},
+      dawn:    {top:0x3a5aa0,hor:0xf0b090,sunCol:0xffa060,cloudCol:0xf0b8a8,fog:0xc8b0b0,fogNear:400,fogFar:2600,hemiSky:0xb0b8e0,hemiGround:0x3a2a2a,hemiInt:.42,keyCol:0xffb880,keyInt:1,   stars:.05,moon:.2, lights:.35, exposure:.9},
+      dusk:    {top:0x34448a,hor:0xff9a60,sunCol:0xff8040,cloudCol:0xe8a080,fog:0xb08890,fogNear:400,fogFar:2600,hemiSky:0xc0a8d0,hemiGround:0x3a2228,hemiInt:.4, keyCol:0xff9a60,keyInt:1,   stars:.1, moon:.3, lights:.65, exposure:.9},
+      twilight:{top:0x0c1a44,hor:0x4a4a78,sunCol:0xff8a60,cloudCol:0x3a3a5a,fog:0x2c3358,fogNear:300,fogFar:2200,hemiSky:0x4a5a9a,hemiGround:0x15121c,hemiInt:.35,keyCol:0x9fb0e0,keyInt:.3,  stars:.5, moon:.8, lights:.95, exposure:1.05},
+      night:   {top:0x040816,hor:0x1e2038,sunCol:0xff8a60,cloudCol:0x1c1f30,fog:0x141a30,fogNear:250,fogFar:2000,hemiSky:0x2a3560,hemiGround:0x0e0c12,hemiInt:.3, keyCol:0x8fa4d8,keyInt:.22, stars:1,  moon:1,  lights:1,   exposure:1.15},
+    };
+    const FCOLS = ['top','hor','sunCol','cloudCol','fog','hemiSky','hemiGround','keyCol'];
+    const FNUMS = ['sunAmt','cloud','stars','moon','fogNear','fogFar','hemiInt','keyInt','lights','exposure','wet','rain','snow','wind'];
+    const mkSky = () => { const a = {storm:false}; FCOLS.forEach(k => a[k] = new THREE.Color()); FNUMS.forEach(k => a[k] = 0); return a; };
+    const skyCur = mkSky(), skyTgt = mkSky(); let skyKey = '', skyReady = false, bakes = 0, bakeT = 0, flashF = 0, stormF = 3;
+    const greyOf = (c, amt) => { const l = c.r*.3 + c.g*.59 + c.b*.11; return c.lerp(new THREE.Color(l,l,l), amt); };
+    const sunWorld = new THREE.Vector3();
+    function skyTarget(st){
+      const PR = FREE_SKY[st.phase] || FREE_SKY.day, T = skyTgt, wx = st.wx, kind = st.kind || 'clear', wet = /rain|drizzle|storm/.test(kind);
+      FCOLS.forEach(k => T[k].setHex(PR[k])); FNUMS.forEach(k => T[k] = PR[k] ?? 0);
+      // the real sun (+x east, +z south), fading in from 4° below the horizon
+      const el = st.el*Math.PI/180, az = st.az*Math.PI/180;
+      sunWorld.set(Math.cos(el)*Math.sin(az), Math.sin(el), -Math.cos(el)*Math.cos(az));
+      T.sunAmt = Math.min(1, Math.max(0, (st.el + 4)/8));
+      // cloud cover greys the sky and hides the sun, stars and moon; fog, rain and snow close the distance in
+      const cover = wx ? wx.cloud/100 : .3;
+      const oc = Math.max(Math.min(1, Math.max(0, (cover - .45)/.55)), wet || kind === 'snow' || kind === 'fog' ? .85 : 0);
+      T.cloud = Math.max(cover, oc);
+      for (const k of ['top','hor','cloudCol','fog']) greyOf(T[k], oc*.7);
+      if (oc > 0) for (const k of ['top','hor']) T[k].multiplyScalar(1 - oc*.3);
+      T.sunAmt *= 1 - oc*.9; T.stars *= 1 - cover; T.moon *= 1 - oc; T.keyInt *= 1 - oc*.65; T.hemiInt *= 1 + oc*.15; T.fogFar *= 1 - oc*.3;
+      if (kind === 'fog'){ T.fogNear = 2; T.fogFar = 150; T.fog.lerp(T.hor, .5); }
+      const mm = wx ? wx.precip : 0;
+      T.rain = kind === 'drizzle' ? .3 : kind === 'rain' ? Math.min(1, .45 + mm*.2) : kind === 'storm' ? 1 : 0;
+      T.snow = kind === 'snow' ? Math.min(1, .5 + mm*.3) : 0;
+      if (T.rain) T.fogFar *= .65; if (T.snow) T.fogFar *= .5;
+      T.wet = wet ? 1 : 0; T.wind = wx ? Math.min(.7, wx.wind/45) : .1; T.storm = kind === 'storm';
+      T.fog.convertSRGBToLinear();
+      // the shadow-casting light: the sun by day (kept at least 10° up so shadows stay sensible), the moon by night
+      setLightDir(st.el > -2 ? sunWorld.clone().setY(Math.max(Math.sin(10*Math.PI/180), sunWorld.y)).normalize() : MOON_DIR);
+      SKYU.uSun.value.copy(sunWorld);
+      if (!skyReady){ skyReady = true; FCOLS.forEach(k => skyCur[k].copy(T[k])); FNUMS.forEach(k => skyCur[k] = T[k]); }
+      bakes = 4; bakeT = 0;   // re-bake the reflections a few times while the sky eases to its new look
+    }
+    // lights that only matter at night: one over Tommy (so he reads in the dark) and two in the penthouse
+    const nightLights = [];
+    const tommyLight = new THREE.PointLight(0xffe2c0, 0, 12, 2); tommyLight.userData.base = .5; fsc.add(tommyLight); nightLights.push(tommyLight);
+    for (const [x,y,z,b] of [[-3,2.9,-3,1.4],[7,2.7,-5,1]]){ const l = new THREE.PointLight(0xffd8a8, 0, 14, 2); l.position.set(x,y,z); l.userData.base = b; ph.add(l); nightLights.push(l); }
+    wetMats.forEach(m => { m.userData.dry = m.roughness; });
+    // rain streaks and snowflakes, kept in a 40 m box round the camera (wrapped, so they stay put as you move)
+    const RN = 2400, rainW = new Float32Array(RN*3), rainPos = new Float32Array(RN*6);
+    for (let i=0;i<RN;i++){ rainW[i*3] = (rand()-.5)*40; rainW[i*3+1] = (rand()-.5)*26; rainW[i*3+2] = (rand()-.5)*40; }
+    const rainGeo = new THREE.BufferGeometry(); rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPos,3));
+    const rainLines = new THREE.LineSegments(rainGeo, new THREE.LineBasicMaterial({color:0xc0cad8, transparent:true, opacity:.35, depthWrite:false}));
+    rainLines.frustumCulled = false; rainLines.visible = false; fsc.add(rainLines);
+    const SN = 1800, snowPos = new Float32Array(SN*3);
+    for (let i=0;i<SN;i++){ snowPos[i*3] = (rand()-.5)*40; snowPos[i*3+1] = (rand()-.5)*26; snowPos[i*3+2] = (rand()-.5)*40; }
+    const snowGeo = new THREE.BufferGeometry(); snowGeo.setAttribute('position', new THREE.BufferAttribute(snowPos,3));
+    const snowPts = new THREE.Points(snowGeo, new THREE.PointsMaterial({map:glowTex, color:0xffffff, size:.14, transparent:true, opacity:.9, depthWrite:false}));
+    snowPts.frustumCulled = false; snowPts.visible = false; fsc.add(snowPts);
+    const wrap = (v, c, half) => c + ((((v - c + half) % (2*half)) + 2*half) % (2*half)) - half;
+    function skyStep(dt, t, tx, ty, tz){
+      const key = [SKY.phase, SKY.kind, SKY.wx ? SKY.wx.cloud + '/' + SKY.wx.precip : '', Math.round(SKY.el), Math.round(SKY.az/2)].join('|');
+      if (key !== skyKey){ skyKey = key; skyTarget(SKY); }
+      const k = Math.min(1, dt*.6), A = skyCur, T = skyTgt;
+      FCOLS.forEach(c => A[c].lerp(T[c], k)); FNUMS.forEach(n => A[n] += (T[n] - A[n])*k);
+      if (T.storm){ stormF -= dt; if (stormF < 0){ flashF = 1; stormF = 4 + rand()*9; } }
+      flashF = flashF > .02 ? flashF*Math.exp(-dt*7)*(rand() < .9 ? 1 : .2) : 0;
+      SKYU.uTop.value.copy(A.top); SKYU.uHor.value.copy(A.hor); SKYU.uSunCol.value.copy(A.sunCol); SKYU.uSunAmt.value = A.sunAmt;
+      SKYU.uCloud.value = A.cloud; SKYU.uCloudCol.value.copy(A.cloudCol); SKYU.uStars.value = A.stars; SKYU.uMoon.value = A.moon; SKYU.uFlash.value = flashF*.5;
+      fsc.fog.color.copy(A.fog); fsc.fog.near = A.fogNear; fsc.fog.far = A.fogFar;
+      hemi.color.copy(A.hemiSky); hemi.groundColor.copy(A.hemiGround); hemi.intensity = A.hemiInt + flashF*1.5;
+      sun.color.copy(A.keyCol); sun.intensity = A.keyInt;
+      const L = A.lights;
+      for (const m of facadeMats) m.emissiveIntensity = L*1.1;
+      for (const [m, kk] of floodMats) m.emissiveIntensity = L*kk;
+      if (lampHeadMat) lampHeadMat.emissiveIntensity = .1 + L*2.4;
+      if (poolMat) poolMat.opacity = L*.65;
+      for (const l of nightLights) l.intensity = l.userData.base*L;
+      tommyLight.position.set(tx, ty + 4, tz);
+      for (const m of wetMats) m.roughness = m.userData.dry - A.wet*(m.userData.dry - .3);
+      renderer.toneMappingExposure = A.exposure;
+      if (bakes > 0 && (bakeT -= dt) <= 0){ bakeEnv(); bakes--; bakeT = 2.5; }
+      // precipitation (not indoors in the penthouse)
+      const cx = camera.position.x, cy = camera.position.y, cz = camera.position.z;
+      const indoors = level === 'top' && P.x > -10 && P.x < 10 && P.z > -8 && P.z < 4;
+      const nR = indoors ? 0 : Math.floor(RN*A.rain), fall = 16, wind = A.wind*9;
+      rainLines.visible = nR > 0;
+      if (nR){ rainGeo.setDrawRange(0, nR*2);
+        for (let i=0;i<nR;i++){ const j = i*3, o = i*6;
+          const x = wrap(rainW[j] - wind*dt, cx, 20), y = wrap(rainW[j+1] - fall*dt, cy + 1, 13), z = wrap(rainW[j+2], cz, 20);
+          rainW[j] = x; rainW[j+1] = y; rainW[j+2] = z;
+          rainPos[o] = x; rainPos[o+1] = y; rainPos[o+2] = z; rainPos[o+3] = x + wind*.035; rainPos[o+4] = y + fall*.035; rainPos[o+5] = z; }
+        rainGeo.attributes.position.needsUpdate = true; rainLines.material.opacity = .2 + .25*A.rain; }
+      const nS = indoors ? 0 : Math.floor(SN*A.snow);
+      snowPts.visible = nS > 0;
+      if (nS){ snowGeo.setDrawRange(0, nS);
+        for (let i=0;i<nS;i++){ const j = i*3;
+          snowPos[j] = wrap(snowPos[j] + (Math.sin(t*.8 + i)*.35 - A.wind*1.5)*dt, cx, 20); snowPos[j+1] = wrap(snowPos[j+1] - .9*dt, cy + 1, 13); snowPos[j+2] = wrap(snowPos[j+2], cz, 20); }
+        snowGeo.attributes.position.needsUpdate = true; }
+    }
     const BED = {x:7.3, y:.62, z:-5.75};
 
     const LANDMARKS = [
@@ -2225,7 +2350,8 @@ function buildScene(){
         // street life runs round wherever Tommy is, so it's busy below the penthouse too
         { const sx = level === 'street' ? P.x : P0.x + P.x, sz = level === 'street' ? P.z : P0.z + P.z;
           life.update(Math.min(dt, .1), sx, sz, level === 'street' ? P.x : 1e5, level === 'street' ? P.z : 1e5);
-          skyMat.uniforms.uTime.value = t; followSun(sx, level === 'street' ? 0 : P0.y, sz); }
+          skyMat.uniforms.uTime.value = t; followSun(sx, level === 'street' ? 0 : P0.y, sz);
+          skyStep(Math.min(dt, .1), t, sx, level === 'street' ? 0 : P0.y, sz); }
         // through the eyepiece, Tommy and the telescope itself would only block the view
         tele.visible = tommy.root.visible = state !== 'scope';
         if (level === 'street') for (const g of guards) idle(g, t, dt, [0,-.3,.3]);
@@ -2385,7 +2511,8 @@ function buildScene(){
   function loop(now){
     if (asleep){ last = now; requestAnimationFrame(loop); return; }
     // daylight London needs less exposure than the night-time menu and cutscene
-    if (mode !== 'menu') renderer.toneMappingExposure = mode === 'free' ? .8 : 1.15;
+    // the menu and free roam set their own exposure from the real sky; the PM's cutscene is always night
+    if (mode === 'story') renderer.toneMappingExposure = 1.15;
     if (mode === 'story'){
       const dt = Math.min(.05,(now-last)/1000); last = now; storyT += dt;
       story.update(storyT, dt);

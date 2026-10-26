@@ -39,7 +39,7 @@ A game starring Tommy (no last name), set in Westminster, London.
     - **UI:** `body.phase-*` shifts the purple accent (`--accent`, `--accent-deep`, `--accent-light`). `body.wx-*` adds rain, snow or fog effects, storm flashes and an overcast dullness to the banner.
       - The HUD shows a weather icon plus "Phase · Weather · °C" under the date.
   - The UI accent is **purple** (`--accent` #A35CF0 / `--accent-deep` #5A27A8, at the user's request). It's used across the menu, subtitles, telescope panel, RUN button and minimap arrow. Tommy's shirt stays blue.
-- **Story Mode** (just "Story Mode", no chapter numbers) opens with the cutscene "The Address". It's in the same file. Prime Minister **Jordan Andreas** (Conservative Party; fictional) speaks outside 10 Downing Street, with press and a police officer.
+- **Story Mode** (just "Story Mode", no chapter numbers) opens with the cutscene "The Address". It's in the same file. **The PM's cutscene is always at night** (its own fixed scenes, exposure 1.15), whatever the real sky (user's rule). Prime Minister **Jordan Andreas** (Conservative Party; fictional) speaks outside 10 Downing Street, with press and a police officer.
   - Tommy is **not** at the speech. The cutscene opens in Tommy's flat, where the speech plays live on his TV ("LDN News 24").
   - It cuts between the flat and the broadcast. It ends on his locked bedroom door ("Tommy's Room – Keep Out"), with warm light under it.
   - Tommy is **not** asleep. A woman behind the door teases him: "You're such a naughty man, Tommy" (5 lines in `HER_LINES`). Keep it suggestive, never explicit.
@@ -77,13 +77,13 @@ A game starring Tommy (no last name), set in Westminster, London.
   - `assets/water.jpg` (the user's water image) textures the Thames and the St James's Park lake, drifting with a ripple normal map.
   - `assets/tree-sheet.jpg` (the user's bark and leaf sheet) is cut at load time: the bark panel becomes the trunk texture, and the leafy branch is chroma-keyed into leaf cards. Trees are instanced and planted in even rows (The Mall, the Embankment, Northumberland Ave) and on a gently jittered lattice in the parks.
   - **Graphics (realistic world, cartoon characters, at the user's choice):**
-    - **Sun shadows:** a PCF-soft shadow box follows Tommy, snapped to shadow-map texels (`followSun`). The sun (`SUN_DIR`) is about 38° up, from the south-east.
+    - **Sun shadows:** a PCF-soft shadow box follows Tommy, snapped to shadow-map texels (`followSun`). `SUN_DIR` is set from the real sun or moon (`setLightDir`).
       - Lit solid meshes cast and receive. Flat ground layers, glass, unlit materials and the kerbs (`userData.noCast`) don't cast. The leaf cards do (`userData.cast`).
     - **Sky:** a shader with a sun glow and drifting fbm clouds (`skyShader`). The same sky, encoded via `linearToOutputTexel`, is baked by PMREM into `fsc.environment` for reflections.
       - `envMapIntensity` is about .45 on matt materials, .6 on facades and 1 on metal, paint and glass.
     - **Facades** (`facadeOf`) use 256 px tiles with roughness/metalness and bump maps, so the glass is glossy and the windows are recessed with sills. `GLASS` buildings are curtain walls.
       - Every `building()` gets instanced trims: a plinth, a string course at 3 m and a cornice.
-    - **Exposure:** free roam renders at .8, the menu and cutscene at 1.15. Pavements are mid-grey York stone.
+    - **Exposure** follows the sky: free roam is .8 by day and 1.15 at night; the menu is .95 by day and 1.15 at night; the cutscene is always 1.15. Pavements are mid-grey York stone.
     - **Graphics Quality** has three levels:
       - Low: pixel ratio 1, no shadows, so the blob shadow under Tommy returns.
       - High: up to 2× resolution, 2048 shadow map over ±75 m.
@@ -93,6 +93,17 @@ A game starring Tommy (no last name), set in Westminster, London.
     - Sky domes use `depthTest:false` + `renderOrder:-1`.
     - Overlapping flat surfaces must never be coplanar: N-S side streets at y .05, E-W at .062, main roads cycling .08/.088/.096, zebras at road y + .014, Tommy's street shadow at .12.
   - Publish the artifact with `assets/water.jpg` and `assets/tree-sheet.jpg` in `files`.
+  - **Free roam also follows the real London sky** (the same `SKY` state as the menu): `skyTarget()`/`skyStep()` in `buildFree`.
+    - It eases between five `FREE_SKY` looks, sets the sun to its real position (+x east, +z south) and applies the live weather.
+      - Cloud cover greys the sky and hides the sun, stars and moon. Fog, rain and snow close the distance in.
+      - Rain streaks and snowflakes wrap in a 40 m box round the camera. They're hidden inside the penthouse.
+      - Rain makes the roads and pavements glossy (`wetMats`). Storms flash.
+    - The shadow light is the sun, kept at least 10° up, or a fixed moon (`MOON_DIR`) at night. The sky shader draws stars and the moon. Reflections are re-baked by PMREM (`bakeEnv`) after each change, not every frame.
+    - At night (`lights`):
+      - About a third of facade windows glow (`facadeOf` emissive maps), and Parliament is floodlit.
+      - Big Ben's stone and the London Eye glow (`floodMats`).
+      - Lamp heads light up and throw additive pools of light (y .118).
+      - A soft light follows Tommy, and two lights warm the penthouse.
   - Reaching the penthouse saves progress (`tommy-save` in localStorage), which unlocks Continue in the menu.
 - `audio/menu-theme.mp3` is the user's main menu theme ("TOMMY MAIN MENU THEME.mp3"). It loops on the menu at Music Volume, starts on the first click or key press (browser rule), and stops immediately when Story Mode or Continue is picked.
 - `audio/`: also holds the user's own voice recordings. `INTRO1-10.mp3` are Jordan Andreas's 10 lines, and `GF1-5.mp3` are the woman's 5 lines (originals in `Documents\Tommy - The GTA Game`).
