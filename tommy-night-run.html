@@ -2375,14 +2375,20 @@ function buildScene(){
     { const deck = new THREE.Mesh(new THREE.PlaneGeometry(24,16), std(0xffffff,{map:deckTex})); deck.rotation.x = -Math.PI/2; deck.position.set(-2,.005,0); ph.add(deck);
       const oak = new THREE.Mesh(new THREE.PlaneGeometry(20,12), std(0xffffff,{map:oakTex,roughness:.5})); oak.rotation.x = -Math.PI/2; oak.position.set(0,.012,-2); ph.add(oak); }
     const plaster = std(0xf1eee8), glassM = new THREE.MeshStandardMaterial({color:0xcfe4f0,transparent:true,opacity:.16,roughness:.05,metalness:.2,depthWrite:false}), steel = std(0x2b2d33,{metalness:.6,roughness:.35});
-    solid(20.4,3.3,.25,plaster,0,1.65,-8);                    // north wall
-    solid(.25,3.3,12.25,plaster,10.1,1.65,-2);                // east wall
+    // the same slate-blue striped wallpaper as Tommy's flat in the opening cutscene, with white skirting boards
+    const wallTexP = srgb(canvasTex(512,512,(g,w,h)=>{ g.fillStyle = '#4a5560'; g.fillRect(0,0,w,h); for (let x=0;x<w;x+=8){ g.fillStyle = 'rgba(255,255,255,.05)'; g.fillRect(x,0,3,h); } }));
+    wallTexP.wrapS = wallTexP.wrapT = THREE.RepeatWrapping; wallTexP.anisotropy = 8;
+    const wallpaper = std(0xffffff,{map:wallTexP, roughness:.9}), skirtM = std(0xe6e2d8);
+    const paper = m => { const q = m.geometry.parameters; m.geometry.dispose(); m.geometry = boxUV(q.width, q.height, q.depth); return m; };   // texture at true scale
+    paper(solid(20.4,3.3,.25,wallpaper,0,1.65,-8));           // north wall
+    paper(solid(.25,3.3,12.25,wallpaper,10.1,1.65,-2));       // east wall
+    for (const [w,d,x,z] of [[20.2,.03,0,-7.86],[.03,11.7,9.96,-2],[.03,6.8,3.89,-4.6],[.03,6.8,4.11,-4.6],[.03,3.6,3.89,2.2],[.03,3.6,4.11,2.2]]) pb(w,.12,d,skirtM,x,.06,z);
     pb(20.6,.3,12.6,plaster,0,3.45,-2); occluders.push(ph.children[ph.children.length-1]);
     // glass walls with sliding-door openings to the terrace
     for (const [x1,x2] of [[-10,-2],[2,10]]){ solid(x2-x1,3.3,.04,glassM,(x1+x2)/2,1.65,4,true,false); for (let x=x1; x<=x2; x+=2) pb(.06,3.3,.08,steel,x,1.65,4); }
     for (const [z1,z2] of [[-8,-2],[.5,4]]){ solid(.04,3.3,z2-z1,glassM,-10,1.65,(z1+z2)/2,true,false); for (let z=z1; z<=z2; z+=2) pb(.08,3.3,.06,steel,-10,1.65,z); }
     // bedroom wall with a doorway
-    solid(.18,3.3,6.8,plaster,4,1.65,-4.6); solid(.18,3.3,3.6,plaster,4,1.65,2.2); pb(.18,.6,1.6,plaster,4,3,-.4);
+    paper(solid(.18,3.3,6.8,wallpaper,4,1.65,-4.6)); paper(solid(.18,3.3,3.6,wallpaper,4,1.65,2.2)); paper(pb(.18,.6,1.6,wallpaper,4,3,-.4));
     // terrace balustrade
     for (const [w,d,x,z] of [[24,.05,-2,8],[.05,16,-14,0],[4,.05,-12,-8],[.05,4,10,6]]) { pb(w,1.1,d,glassM,x,.55,z); pb(w+.06,.06,d+.06,steel,x,1.12,z); }
     // bedroom: the bed Tommy wakes up in, and a clue he wasn't alone

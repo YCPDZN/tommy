@@ -68,6 +68,7 @@ A game starring Tommy (no last name), set in Westminster, London.
   - Controls: WASD/arrows to move, Shift to run, drag to turn the camera, E to interact, Esc to pause.
   - **Touch screens** (`pointer:coarse`) get a left thumbstick (analogue: a half push walks slower), a RUN toggle and a gold E button. Drag anywhere else to turn the camera; the camera follows one pointer only.
     - On touch screens the minimap moves to the top-right, with Pause under it. Cutscenes advance by tap, and Skip is a button.
+  - The penthouse's inside walls (north, east and the bedroom partition) use **the same slate-blue striped wallpaper as Tommy's flat in the cutscene** (`wallpaper`, at true scale via `boxUV`), with white skirting. The ceiling stays white. Keep the two consistent.
   - There's a minimap with landmark blips, and a telescope on the terrace that cycles through the landmarks with facts. The TV shows the morning news.
     - The minimap is a dark open-world-style street map, north up, with a purple (`--accent`) rim and N/E/S/W letters.
       - Side streets are grey, main roads bright, The Mall red. Parks are green, the Thames and the lake blue, Horse Guards and Trafalgar Square plazas, buildings slate (`MAP` in `buildFree`).
