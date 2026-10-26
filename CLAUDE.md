@@ -59,7 +59,7 @@ A game starring Tommy (no last name), set in Westminster, London.
 - **Story Mode** (just "Story Mode", no chapter numbers) opens with the cutscene "The Address". It's in the same file. **The PM's cutscene is always at night** (its own fixed scenes, exposure 1.15), whatever the real sky (user's rule). Prime Minister **Jordan Andreas** (Conservative Party; fictional) speaks outside 10 Downing Street, with press and a police officer.
   - Tommy is **not** at the speech. The cutscene opens in Tommy's flat, where the speech plays live on his TV ("LDN News 24").
   - It cuts between the flat and the broadcast. It ends on his locked bedroom door ("Tommy's Room – Keep Out"), with warm light under it.
-  - Tommy is **not** asleep. A woman behind the door teases him: "You're such a naughty man, Tommy" (5 lines in `HER_LINES`). Keep it suggestive, never explicit.
+  - Tommy is **not** asleep. A seductive, dominatrix-style woman behind the door bosses him about, ending with "I want you to rock my world" (5 lines in `HER_LINES`). Keep it suggestive, never explicit.
   - Andreas has swept-up grey hair, big round eyes, a dark maroon suit, a white shirt, a blue tie, a gold belt buckle and black trousers.
   - His 10 lines are in `LINES`. The key line is "I am willing to help end the war on crime." Camera shots are in `SHOTS` / `LINE_SHOTS`.
 - After the woman's lines comes a "The next day" card, then **free roam** in Tommy's home (`buildFree`).
