@@ -40,6 +40,9 @@ A game starring Tommy (no last name), set in Westminster, London.
   - The layout is deliberately tidy. An even 100 m street grid with 10 m side streets runs around the main roads (Whitehall, The Mall, the Strand, Northumberland Ave, Pall Mall, Charing Cross Rd, the Embankment, Bridge St/Westminster Bridge, Parliament Square).
     - Each grid cell holds one 78 m mansion block (or four 34 m blocks next to a main road), at even heights of 21/24/27 m with district materials.
     - Whitehall has a continuous 26 m Portland-stone frontage. Don't go back to random scattered buildings.
+  - **Street life** (`life` in `buildFree`): about 64 cars, black cabs and red double-deckers drive on the left along `roads` and brake for Tommy. Buses stay on main roads. About 100 pedestrians walk the pavements, sidestep each other and Tommy, and never overlap.
+    - Everything is pooled within `LIFE_R` of Tommy and recycled out of sight. Cars and people block Tommy.
+    - Pedestrians are the cutscene's cartoon extras: `figure()` sits at `buildScene` level and is shared. 24 looks are baked once into merged, vertex-coloured meshes (one per moving part) and reused, so the crowd stays cheap.
   - `assets/water.jpg` (the user's water image) textures the Thames and the St James's Park lake, drifting with a ripple normal map.
   - `assets/tree-sheet.jpg` (the user's bark and leaf sheet) is cut at load time: the bark panel becomes the trunk texture, and the leafy branch is chroma-keyed into leaf cards. Trees are instanced and planted in even rows (The Mall, the Embankment, Northumberland Ave) and on a gently jittered lattice in the parks.
   - **Anti-flicker rules:**

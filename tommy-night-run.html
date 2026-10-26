@@ -599,6 +599,94 @@ function buildScene(){
     if (ol){ geo.computeBoundingSphere(); const k = 1 + ol/Math.max(.02, geo.boundingSphere.radius); const o = new THREE.Mesh(geo, outlineMat); o.scale.setScalar(k); m.add(o); }
     return m;
   }
+  /* ---------- cartoon extras, shared by the cutscene and the street crowd ---------- */
+  // cartoon extras built like Tommy and Andreas: big round heads, white eyes, noses, ears, hairstyles
+  // o: {coat, legs, skin, hair, style:'short'|'spiky'|'bald'|'long'|'bun'|'cap', glasses, tie, scarf, lids, helmet, camera}
+  const toonCache = {};
+  const tc = c => toonCache[c] || (toonCache[c] = toon(c));
+  function figure(o){
+    const root = new THREE.Group(), body = new THREE.Group(); root.add(body);
+    const coat = tc(o.coat), legs = tc(o.legs || 0x1a1b22), skin = tc(o.skin || 0xf3c7a0), hair = tc(o.hair ?? 0x2a1d14);
+    const w = o.wide || 1;
+    // each leg hangs from a hip pivot so walkers can swing it
+    const legPivots = [-1,1].map(sx => { const hip = new THREE.Group(); hip.position.set(sx*.1,.9,0); body.add(hip);
+      part(new THREE.SphereGeometry(.09,16,12), tc(o.shoes || 0x141418), hip, [0,-.85,.05], [0,0,0], [1,.6,1.75], .018);
+      part(new THREE.CylinderGeometry(.068*w,.066,.84,14), legs, hip, [0,-.42,0], [0,0,0], [1,1,1], .015);
+      return hip; });
+    part(new THREE.CylinderGeometry(.19*w,.18*w,.14,20), legs, body, [0,.88,0], [0,0,0], [1,1,.72], .018);
+    const torso = new THREE.Group(); torso.position.y = .93; body.add(torso);
+    part(new THREE.CylinderGeometry(.21*w,.2*w,.52,22), coat, torso, [0,.26,0], [0,0,0], [1,1,.72], .02);
+    part(new THREE.SphereGeometry(.21*w,22,12,0,Math.PI*2,0,Math.PI/2), coat, torso, [0,.51,0], [0,0,0], [1,.42,.72], .02);
+    if (o.tie){
+      const vee = new THREE.Shape(); vee.moveTo(-.06,.52); vee.lineTo(.06,.52); vee.lineTo(0,.2); vee.closePath();
+      part(new THREE.ShapeGeometry(vee), M.white, torso, [0,0,.152*w], [0,0,0], [1,1,1], 0);
+      const tie = new THREE.Shape(); tie.moveTo(-.014,.5); tie.lineTo(.014,.5); tie.lineTo(.022,.27); tie.lineTo(0,.22); tie.lineTo(-.022,.27); tie.closePath();
+      part(new THREE.ShapeGeometry(tie), tc(o.tie), torso, [0,0,.154*w], [0,0,0], [1,1,1], 0);
+    }
+    if (o.scarf) part(new THREE.TorusGeometry(.085,.035,10,20), tc(o.scarf), torso, [0,.56,0], [Math.PI/2,0,0], [1,1,1], .01);
+    part(new THREE.CylinderGeometry(.056,.06,.1,14), skin, torso, [0,.6,0], [0,0,0], [1,1,1], .012);
+    const arms = [];
+    for (const sx of [-1,1]){
+      const a = new THREE.Group(); a.position.set(sx*.245*w,.47,0); a.rotation.z = sx*.08; torso.add(a);
+      part(new THREE.CylinderGeometry(.068,.062,.5,14), coat, a, [0,-.23,0], [0,0,0], [1,1,1], .015);
+      part(new THREE.SphereGeometry(.056,14,10), skin, a, [0,-.53,.005], [0,0,0], [.9,1.1,.9], .012);
+      arms.push(a);
+    }
+    const head = new THREE.Group(); head.position.y = .68; torso.add(head);
+    const HS = [.92,1.06,.96];
+    part(new THREE.SphereGeometry(.19,30,22), skin, head, [0,.17,0], [0,0,0], HS, .02);
+    for (const sx of [-1,1]) part(new THREE.SphereGeometry(.056,14,10), skin, head, [sx*.172,.16,-.01], [0,0,0], [.45,1,.72], .012);
+    // hair
+    const st = o.style || 'short';
+    if (st !== 'bald' && !o.helmet) part(new THREE.SphereGeometry(.196,26,14,0,Math.PI*2,0,Math.PI*(st==='long'||st==='bun' ? .56 : .48)), hair, head, [0,.18,-.02], [-.5,0,0], HS, .014);
+    if (st === 'bald') for (const sx of [-1,1]) part(new THREE.SphereGeometry(.07,12,10), hair, head, [sx*.16,.2,-.07], [0,0,0], [.5,.8,1.2], .01);
+    if (st === 'spiky') for (let i=0;i<9;i++){ const a = -1 + i*.25; part(new THREE.ConeGeometry(.042,.12,8), hair, head, [Math.sin(a)*.11,.36-Math.abs(a)*.03,-.02], [-.5+(i%2)*.25,0,-a*.5], [1,1,1], .01); }
+    if (st === 'long') part(new THREE.SphereGeometry(.2,20,14), hair, head, [0,.06,-.07], [0,0,0], [1.02,1.25,.75], .014);
+    if (st === 'bun') part(new THREE.SphereGeometry(.07,14,10), hair, head, [0,.36,-.1], [0,0,0], [1,1,1], .01);
+    if (st === 'cap'){ part(new THREE.SphereGeometry(.2,22,12,0,Math.PI*2,0,Math.PI*.45), tc(o.capColor || 0x1f3a7a), head, [0,.19,0], [0,0,0], [.95,1,1], .014);
+      part(new THREE.CylinderGeometry(.12,.12,.015,20,1,false,0,Math.PI), tc(o.capColor || 0x1f3a7a), head, [0,.24,.15], [0,Math.PI/2,0], [1,1,1.3], .006); }
+    // face
+    const eyes = new THREE.Group(); head.add(eyes);
+    const gaze = (rand()-.5)*.02;
+    for (const sx of [-1,1]){
+      const e = new THREE.Group(); e.position.set(sx*.062,.2,.158); eyes.add(e);
+      part(new THREE.SphereGeometry(.045,16,12), M.white, e, [0,0,0], [0,0,0], [1,1.15,.55], .009);
+      part(new THREE.SphereGeometry(.015,10,8), M.black, e, [gaze,-.004,.022], [0,0,0], [1,1,.5], 0);
+      // open half-sphere lids get no outline hull: its inside would show as a black patch over the eye
+      if (o.lids){ part(new THREE.SphereGeometry(.048,16,8,0,Math.PI*2,0,Math.PI/2), skin, e, [0,.002,.002], [.4,0,0], [1.02,1.15,.62], 0);
+        part(new THREE.BoxGeometry(.09,.008,.01), M.black, e, [0,.004,.026], [0,0,0], [1,1,1], 0); }
+      if (!o.helmet) part(new THREE.BoxGeometry(.07,.014,.02), hair, head, [sx*.064,.275,.158], [-.2,0,sx*(o.frown ? .18 : -.05)], [1,1,1], 0);
+    }
+    if (o.glasses){ const gm = tc(0x111114);
+      for (const sx of [-1,1]) part(new THREE.TorusGeometry(.05,.008,6,20), gm, head, [sx*.062,.2,.19], [0,0,0], [1,1.05,1], 0);
+      part(new THREE.BoxGeometry(.03,.008,.008), gm, head, [0,.21,.2], [0,0,0], [1,1,1], 0); }
+    part(new THREE.SphereGeometry(.032,12,10), skin, head, [0,.13,.19], [0,0,0], [1,1,1.2], .008);
+    part(new THREE.BoxGeometry(.06,.008,.01), M.dark, head, [0,.06,.172], [0,0,o.smirk ? .15 : 0], [1,1,1], 0);
+    if (o.helmet){
+      part(new THREE.SphereGeometry(.2,20,14), tc(0x101320), head, [0,.36,-.01], [0,0,0], [.95,1.35,1], .015);
+      part(new THREE.TorusGeometry(.19,.02,8,24), tc(0x101320), head, [0,.27,-.01], [Math.PI/2,0,0], [1,1.05,1], .008);
+      part(new THREE.BoxGeometry(.07,.08,.02), tc(0xd9dde6), head, [0,.42,.19], [-.2,0,0], [1,1,1], 0);
+      part(new THREE.SphereGeometry(.03,8,8), tc(0xd9dde6), head, [0,.63,0], [0,0,0], [1,1,1], 0);
+    }
+    const rig = {root, body, torso, arms, legs:legPivots, head, eyes, torsoY:.93, lookT:0, look:0, blinkAt:rand()*3, phase:rand()*6};
+    if (o.camera){
+      rig.posed = true;
+      arms.forEach((a,i) => { a.rotation.x = -1.35; a.rotation.z = (i ? -1 : 1)*-.35; });
+      // half the press shoot from the eye (camera over one eye), the rest from the chest so their faces show
+      const low = o.low;
+      if (low) arms.forEach((a,i) => { a.rotation.x = -.95; a.rotation.z = (i ? -1 : 1)*-.5; });
+      const cam = new THREE.Group(); cam.position.set(low ? 0 : .06, low ? -.3 : .2, low ? .32 : .26); head.add(cam);
+      const camBody = tc(0x2c2e36), metal = tc(0xb9bec8);
+      part(new THREE.BoxGeometry(.15,.095,.075), camBody, cam, [0,0,0], [0,0,0], [1,1,1], .006);
+      part(new THREE.BoxGeometry(.15,.022,.077), metal, cam, [0,.045,0], [0,0,0], [1,1,1], 0);
+      part(new THREE.BoxGeometry(.04,.03,.04), camBody, cam, [-.03,.068,0], [0,0,0], [1,1,1], .004);
+      part(new THREE.CylinderGeometry(.034,.038,.08,16), tc(0x1a1b20), cam, [.01,0,.075], [Math.PI/2,0,0], [1,1,1], .005);
+      part(new THREE.CircleGeometry(.026,16), new THREE.MeshBasicMaterial({color:0x2a4a7a}), cam, [.01,0,.116], [0,0,0], [1,1,1], 0);
+      rig.cam = cam;
+    }
+    return rig;
+  }
+
   function buildTommy(){
   const tommy = new THREE.Group();
   const body = new THREE.Group(); tommy.add(body);
@@ -906,91 +994,6 @@ function buildScene(){
     pm.arms.forEach(a => { a.rotation.x = -.85; });
 
     /* ----- extras: police officer, press, crowd ----- */
-    // cartoon extras built like Tommy and Andreas: big round heads, white eyes, noses, ears, hairstyles
-    // o: {coat, legs, skin, hair, style:'short'|'spiky'|'bald'|'long'|'bun'|'cap', glasses, tie, scarf, lids, helmet, camera}
-    const toonCache = {};
-    const tc = c => toonCache[c] || (toonCache[c] = toon(c));
-    function figure(o){
-      const root = new THREE.Group(), body = new THREE.Group(); root.add(body);
-      const coat = tc(o.coat), legs = tc(o.legs || 0x1a1b22), skin = tc(o.skin || 0xf3c7a0), hair = tc(o.hair ?? 0x2a1d14);
-      const w = o.wide || 1;
-      for (const sx of [-1,1]){
-        part(new THREE.SphereGeometry(.09,16,12), tc(o.shoes || 0x141418), body, [sx*.1,.05,.05], [0,0,0], [1,.6,1.75], .018);
-        part(new THREE.CylinderGeometry(.068*w,.066,.84,14), legs, body, [sx*.1,.48,0], [0,0,0], [1,1,1], .015);
-      }
-      part(new THREE.CylinderGeometry(.19*w,.18*w,.14,20), legs, body, [0,.88,0], [0,0,0], [1,1,.72], .018);
-      const torso = new THREE.Group(); torso.position.y = .93; body.add(torso);
-      part(new THREE.CylinderGeometry(.21*w,.2*w,.52,22), coat, torso, [0,.26,0], [0,0,0], [1,1,.72], .02);
-      part(new THREE.SphereGeometry(.21*w,22,12,0,Math.PI*2,0,Math.PI/2), coat, torso, [0,.51,0], [0,0,0], [1,.42,.72], .02);
-      if (o.tie){
-        const vee = new THREE.Shape(); vee.moveTo(-.06,.52); vee.lineTo(.06,.52); vee.lineTo(0,.2); vee.closePath();
-        part(new THREE.ShapeGeometry(vee), M.white, torso, [0,0,.152*w], [0,0,0], [1,1,1], 0);
-        const tie = new THREE.Shape(); tie.moveTo(-.014,.5); tie.lineTo(.014,.5); tie.lineTo(.022,.27); tie.lineTo(0,.22); tie.lineTo(-.022,.27); tie.closePath();
-        part(new THREE.ShapeGeometry(tie), tc(o.tie), torso, [0,0,.154*w], [0,0,0], [1,1,1], 0);
-      }
-      if (o.scarf) part(new THREE.TorusGeometry(.085,.035,10,20), tc(o.scarf), torso, [0,.56,0], [Math.PI/2,0,0], [1,1,1], .01);
-      part(new THREE.CylinderGeometry(.056,.06,.1,14), skin, torso, [0,.6,0], [0,0,0], [1,1,1], .012);
-      const arms = [];
-      for (const sx of [-1,1]){
-        const a = new THREE.Group(); a.position.set(sx*.245*w,.47,0); a.rotation.z = sx*.08; torso.add(a);
-        part(new THREE.CylinderGeometry(.068,.062,.5,14), coat, a, [0,-.23,0], [0,0,0], [1,1,1], .015);
-        part(new THREE.SphereGeometry(.056,14,10), skin, a, [0,-.53,.005], [0,0,0], [.9,1.1,.9], .012);
-        arms.push(a);
-      }
-      const head = new THREE.Group(); head.position.y = .68; torso.add(head);
-      const HS = [.92,1.06,.96];
-      part(new THREE.SphereGeometry(.19,30,22), skin, head, [0,.17,0], [0,0,0], HS, .02);
-      for (const sx of [-1,1]) part(new THREE.SphereGeometry(.056,14,10), skin, head, [sx*.172,.16,-.01], [0,0,0], [.45,1,.72], .012);
-      // hair
-      const st = o.style || 'short';
-      if (st !== 'bald' && !o.helmet) part(new THREE.SphereGeometry(.196,26,14,0,Math.PI*2,0,Math.PI*(st==='long'||st==='bun' ? .56 : .48)), hair, head, [0,.18,-.02], [-.5,0,0], HS, .014);
-      if (st === 'bald') for (const sx of [-1,1]) part(new THREE.SphereGeometry(.07,12,10), hair, head, [sx*.16,.2,-.07], [0,0,0], [.5,.8,1.2], .01);
-      if (st === 'spiky') for (let i=0;i<9;i++){ const a = -1 + i*.25; part(new THREE.ConeGeometry(.042,.12,8), hair, head, [Math.sin(a)*.11,.36-Math.abs(a)*.03,-.02], [-.5+(i%2)*.25,0,-a*.5], [1,1,1], .01); }
-      if (st === 'long') part(new THREE.SphereGeometry(.2,20,14), hair, head, [0,.06,-.07], [0,0,0], [1.02,1.25,.75], .014);
-      if (st === 'bun') part(new THREE.SphereGeometry(.07,14,10), hair, head, [0,.36,-.1], [0,0,0], [1,1,1], .01);
-      if (st === 'cap'){ part(new THREE.SphereGeometry(.2,22,12,0,Math.PI*2,0,Math.PI*.45), tc(o.capColor || 0x1f3a7a), head, [0,.19,0], [0,0,0], [.95,1,1], .014);
-        part(new THREE.CylinderGeometry(.12,.12,.015,20,1,false,0,Math.PI), tc(o.capColor || 0x1f3a7a), head, [0,.24,.15], [0,Math.PI/2,0], [1,1,1.3], .006); }
-      // face
-      const eyes = new THREE.Group(); head.add(eyes);
-      const gaze = (rand()-.5)*.02;
-      for (const sx of [-1,1]){
-        const e = new THREE.Group(); e.position.set(sx*.062,.2,.158); eyes.add(e);
-        part(new THREE.SphereGeometry(.045,16,12), M.white, e, [0,0,0], [0,0,0], [1,1.15,.55], .009);
-        part(new THREE.SphereGeometry(.015,10,8), M.black, e, [gaze,-.004,.022], [0,0,0], [1,1,.5], 0);
-        // open half-sphere lids get no outline hull: its inside would show as a black patch over the eye
-        if (o.lids){ part(new THREE.SphereGeometry(.048,16,8,0,Math.PI*2,0,Math.PI/2), skin, e, [0,.002,.002], [.4,0,0], [1.02,1.15,.62], 0);
-          part(new THREE.BoxGeometry(.09,.008,.01), M.black, e, [0,.004,.026], [0,0,0], [1,1,1], 0); }
-        if (!o.helmet) part(new THREE.BoxGeometry(.07,.014,.02), hair, head, [sx*.064,.275,.158], [-.2,0,sx*(o.frown ? .18 : -.05)], [1,1,1], 0);
-      }
-      if (o.glasses){ const gm = tc(0x111114);
-        for (const sx of [-1,1]) part(new THREE.TorusGeometry(.05,.008,6,20), gm, head, [sx*.062,.2,.19], [0,0,0], [1,1.05,1], 0);
-        part(new THREE.BoxGeometry(.03,.008,.008), gm, head, [0,.21,.2], [0,0,0], [1,1,1], 0); }
-      part(new THREE.SphereGeometry(.032,12,10), skin, head, [0,.13,.19], [0,0,0], [1,1,1.2], .008);
-      part(new THREE.BoxGeometry(.06,.008,.01), M.dark, head, [0,.06,.172], [0,0,o.smirk ? .15 : 0], [1,1,1], 0);
-      if (o.helmet){
-        part(new THREE.SphereGeometry(.2,20,14), tc(0x101320), head, [0,.36,-.01], [0,0,0], [.95,1.35,1], .015);
-        part(new THREE.TorusGeometry(.19,.02,8,24), tc(0x101320), head, [0,.27,-.01], [Math.PI/2,0,0], [1,1.05,1], .008);
-        part(new THREE.BoxGeometry(.07,.08,.02), tc(0xd9dde6), head, [0,.42,.19], [-.2,0,0], [1,1,1], 0);
-        part(new THREE.SphereGeometry(.03,8,8), tc(0xd9dde6), head, [0,.63,0], [0,0,0], [1,1,1], 0);
-      }
-      const rig = {root, body, torso, arms, head, eyes, torsoY:.93, lookT:0, look:0, blinkAt:rand()*3, phase:rand()*6};
-      if (o.camera){
-        rig.posed = true;
-        arms.forEach((a,i) => { a.rotation.x = -1.35; a.rotation.z = (i ? -1 : 1)*-.35; });
-        // half the press shoot from the eye (camera over one eye), the rest from the chest so their faces show
-        const low = o.low;
-        if (low) arms.forEach((a,i) => { a.rotation.x = -.95; a.rotation.z = (i ? -1 : 1)*-.5; });
-        const cam = new THREE.Group(); cam.position.set(low ? 0 : .06, low ? -.3 : .2, low ? .32 : .26); head.add(cam);
-        const camBody = tc(0x2c2e36), metal = tc(0xb9bec8);
-        part(new THREE.BoxGeometry(.15,.095,.075), camBody, cam, [0,0,0], [0,0,0], [1,1,1], .006);
-        part(new THREE.BoxGeometry(.15,.022,.077), metal, cam, [0,.045,0], [0,0,0], [1,1,1], 0);
-        part(new THREE.BoxGeometry(.04,.03,.04), camBody, cam, [-.03,.068,0], [0,0,0], [1,1,1], .004);
-        part(new THREE.CylinderGeometry(.034,.038,.08,16), tc(0x1a1b20), cam, [.01,0,.075], [Math.PI/2,0,0], [1,1,1], .005);
-        part(new THREE.CircleGeometry(.026,16), new THREE.MeshBasicMaterial({color:0x2a4a7a}), cam, [.01,0,.116], [0,0,0], [1,1,1], 0);
-        rig.cam = cam;
-      }
-      return rig;
-    }
     const extras = [];
     const officer = figure({coat:0x141a2e, legs:0x141a2e, helmet:true, lids:true, wide:1.08}); officer.root.position.set(1.55,.15,.75); officer.posed = true;
     officer.arms.forEach(a => { a.rotation.x = .25; }); sc.add(officer.root); extras.push(officer);
@@ -1598,24 +1601,49 @@ function buildScene(){
         for (const x of [-.85,.85]){ box(.3,.18,.05,lampF,x,.7,5.31,g); box(.3,.22,.05,lampR,x,.8,-5.31,g); }
         wheels(g,[-1.08,1.08],[-3.4,3.6],1.4); return {g, len:10.6, speed:8.5 + rand()*1.5, bus:true};
       }
-      // people: legs and arms hang from pivots so they can swing
-      const skins = [0xf1c9a5,0xe0ac80,0xc68a5c,0x8d5a3b,0x5a3825,0xf5d6bd].map(c => std(c,{roughness:.7}));
-      const tops = [0x1d2a44,0x6b1f24,0x2e3a2c,0xd9d4c7,0x3b3f46,0x8a6a3c,0x1a1a1c,0x4a6fa5,0xb04a2a,0x7d7f86].map(c => std(c,{roughness:.9}));
-      const bottoms = [0x1b1d22,0x2a3550,0x4b4b50,0x6b5a44,0x22262e].map(c => std(c,{roughness:.9}));
-      const hairs = [0x1a120c,0x3b2414,0x6a4a2a,0xb59a62,0x8a8a8a,0x0c0c0c].map(c => std(c,{roughness:1}));
-      const shoeM = std(0x111214,{roughness:.6});
-      const limbGeo = new THREE.BoxGeometry(.15,.82,.17); limbGeo.translate(0,-.41,0);
-      const armGeo = new THREE.BoxGeometry(.11,.66,.12); armGeo.translate(0,-.33,0);
+      // people: the cutscene's cartoon extras. A few dozen looks are built once, each merged into one coloured mesh
+      // (plus one outline hull) per moving part, and shared across the crowd so a full street stays cheap to draw.
+      const crowdMat = new THREE.MeshToonMaterial({color:0xffffff, vertexColors:true, gradientMap:grad, toneMapped:false, emissive:0x383838});
+      crowdMat.userData.lin = true;
+      // the same self-colour glow as the cutscene's toon materials, but taken from each vertex's own colour
+      crowdMat.onBeforeCompile = sh => { sh.fragmentShader = sh.fragmentShader.replace('vec3 totalEmissiveRadiance = emissive;', 'vec3 totalEmissiveRadiance = emissive * vColor;'); };
+      // merge every mesh under `from` (skipping the moving parts in `skip`) into geometry in `frame`'s space, coloured per vertex
+      function bake(frame, from, skip){
+        frame.updateMatrixWorld(true);
+        const inv = new THREE.Matrix4().copy(frame.matrixWorld).invert(), fill = [], hull = [], mtx = new THREE.Matrix4();
+        from.traverse(o => { if (!o.isMesh) return; for (let q=o; q && q !== from; q=q.parent) if (skip.includes(q)) return;
+          const g = o.geometry.clone(); g.applyMatrix4(mtx.multiplyMatrices(inv, o.matrixWorld));
+          if (o.material === outlineMat){ hull.push(g); return; }
+          const c = o.material.color.clone(); if (!o.material.userData.lin) c.convertSRGBToLinear();
+          const n = g.attributes.position.count, col = new Float32Array(n*3); for (let i=0;i<n;i++){ col[i*3] = c.r; col[i*3+1] = c.g; col[i*3+2] = c.b; }
+          g.setAttribute('color', new THREE.BufferAttribute(col,3)); fill.push(g); });
+        const merge = (list, withColor) => { let nv = 0, ni = 0; for (const g of list){ nv += g.attributes.position.count; ni += g.index ? g.index.count : g.attributes.position.count; }
+          const pos = new Float32Array(nv*3), nor = new Float32Array(nv*3), col = withColor ? new Float32Array(nv*3) : null, idx = new Uint32Array(ni); let v = 0, k = 0;
+          for (const g of list){ const c = g.attributes.position.count; pos.set(g.attributes.position.array, v*3); nor.set(g.attributes.normal.array, v*3); if (col) col.set(g.attributes.color.array, v*3);
+            if (g.index) for (let i=0;i<g.index.count;i++) idx[k++] = g.index.array[i] + v; else for (let i=0;i<c;i++) idx[k++] = i + v; v += c; }
+          const out = new THREE.BufferGeometry(); out.setAttribute('position', new THREE.BufferAttribute(pos,3)); out.setAttribute('normal', new THREE.BufferAttribute(nor,3));
+          if (col) out.setAttribute('color', new THREE.BufferAttribute(col,3)); out.setIndex(new THREE.BufferAttribute(idx,1)); out.computeBoundingSphere(); return out; };
+        return [merge(fill, true), merge(hull, false)];
+      }
       const pick = a => a[Math.floor(rand()*a.length)];
+      const coats = [0x1d2a44,0x6b1f24,0x2e3a2c,0xd9d4c7,0x3b3f46,0x8a6a3c,0x1a1a1c,0x4a6fa5,0xb04a2a,0x7d7f86,0x5c2d5e,0xc9a24a,0x2f6f6a];
+      const trousers = [0x1b1d22,0x2a3550,0x4b4b50,0x6b5a44,0x22262e,0x3d4c6b];
+      const skinTones = [0xf3c7a0,0xe8b48a,0xc68a5c,0x9a6440,0x6a4430,0xf6d3b8];
+      const hairCols = [0x2a1d14,0x141519,0x5a3a20,0xb58f52,0x8c8c8c,0x7a2e14];
+      const LOOKS = Array.from({length:24}, (_,i) => {
+        const fg = figure({coat:pick(coats), legs:pick(trousers), skin:pick(skinTones), hair:pick(hairCols), style:pick(['short','short','spiky','bald','long','long','bun','cap']),
+          capColor:pick(coats), glasses:rand() < .2, scarf:rand() < .2 ? pick(coats) : null, tie:i % 6 === 0 ? pick(coats) : null, wide:.95 + rand()*.15});
+        const moving = [...fg.legs, ...fg.arms];
+        return {body:bake(fg.root, fg.root, moving), legs:fg.legs.map(l => ({at:l.position.clone(), geo:bake(l, l, [])})),
+          arms:fg.arms.map(a => ({at:new THREE.Vector3().setFromMatrixPosition(a.matrixWorld), rz:a.rotation.z, geo:bake(a, a, [])}))};
+      });
+      const piece = (parent, [fill, hull], at) => { const g = new THREE.Group(); if (at) g.position.copy(at);
+        g.add(new THREE.Mesh(fill, crowdMat), new THREE.Mesh(hull, outlineMat)); parent.add(g); return g; };
       function person(){
-        const g = new THREE.Group(), s = .92 + rand()*.16, skin = pick(skins), top = pick(tops), bot = pick(bottoms);
-        const legs = [-.1,.1].map(x => { const p = new THREE.Group(); p.position.set(x,.88,0); p.add(new THREE.Mesh(limbGeo, bot)); const sh = box(.16,.1,.26,shoeM,0,-.84,.04,p); g.add(p); return p; });
-        box(.42,.6,.24,top,0,1.2,0,g);
-        const arms = [-.27,.27].map(x => { const p = new THREE.Group(); p.position.set(x,1.47,0); p.add(new THREE.Mesh(armGeo, top)); box(.1,.11,.1,skin,0,-.7,0,p); g.add(p); return p; });
-        box(.12,.1,.12,skin,0,1.55,0,g); box(.22,.26,.24,skin,0,1.73,0,g);
-        const hair = box(.24,.1,.26,pick(hairs),0,1.88,-.01,g); if (rand() < .4) box(.24,.22,.06,hair.material,0,1.77,-.13,g);
-        if (rand() < .25) box(.3,.38,.12,pick(tops),0,1.2,-.18,g);                                   // a backpack
-        g.scale.setScalar(s); return {g, legs, arms, speed:1.15 + rand()*.45, phase:rand()*6};
+        const L = pick(LOOKS), g = new THREE.Group(), body = new THREE.Group(); g.add(body);
+        piece(body, L.body);
+        const legs = L.legs.map(l => piece(body, l.geo, l.at)), arms = L.arms.map(a => { const p = piece(body, a.geo, a.at); p.rotation.z = a.rz; return p; });
+        g.scale.setScalar(.95 + rand()*.1); return {g, body, legs, arms, speed:1.15 + rand()*.45, phase:rand()*6};
       }
       // roads joined end to end make the network; a dead end means a U-turn
       const links = roads.map((r,i) => { const out = [[],[]];
@@ -1656,7 +1684,7 @@ function buildScene(){
       const holder = new THREE.Group(); fsc.add(holder);
       const mixes = [car,car,car,car,cab,cab,bus];
       for (let i=0;i<64;i++){ const m = mixes[i % mixes.length](); m.kind = 'car'; cars.push(m); holder.add(m.g); }
-      for (let i=0;i<120;i++){ const m = person(); m.kind = 'ped'; peds.push(m); holder.add(m.g); }
+      for (let i=0;i<100;i++){ const m = person(); m.kind = 'ped'; peds.push(m); holder.add(m.g); }
       let ready = false;
       const turnTo = (g, yaw, k) => { let d = yaw - g.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d)); g.rotation.y += d*k; };
       return {
@@ -1699,6 +1727,7 @@ function buildScene(){
             if (!hitsStatic(sx, sz, .3)){ tmp.x = sx; tmp.z = sz; } else a.dodge *= .9;
             const k = Math.min(1, dt*4); a.g.position.x += (tmp.x - a.g.position.x)*k; a.g.position.z += (tmp.z - a.g.position.z)*k;
             turnTo(a.g, tmp.yaw, Math.min(1, dt*6));
+            a.body.visible = Math.hypot(a.g.position.x-cx, a.g.position.z-cz) < 120;   // too small to matter further off
             a.phase += dt*v*4.2; const sw = Math.sin(a.phase)*Math.min(1, v/a.speed)*.5;
             a.legs[0].rotation.x = sw; a.legs[1].rotation.x = -sw; a.arms[0].rotation.x = -sw*.8; a.arms[1].rotation.x = sw*.8;
           }
