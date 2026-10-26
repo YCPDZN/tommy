@@ -10,6 +10,12 @@ A game starring Tommy (no last name), set in Westminster, London.
   - If `tommy.glb` changes, regenerate the text file: `[Convert]::ToBase64String` of the bytes.
   - Publish with `assets/tommy-glb.txt` in `files`.
 
+## Setting (alternate history)
+
+- The game is set in the present day in an alternate history: the Conservatives beat Labour under Keir Starmer at the 2024 general election, and are still in power.
+- Prime Minister **Jordan Andreas** (fictional) is **Rishi Sunak's successor** as Conservative leader and PM.
+- Real politicians (Sunak, Starmer) are only mentioned as background. Fictional characters carry the story.
+
 ## This folder is the project's permanent home
 
 - Keep all project work here: `C:\Users\HOME\Documents\Claude\Projects\Tommy`.
