@@ -109,7 +109,21 @@ body.wx-storm .banner{animation:wx-flash 9s infinite}
 @keyframes wx-rain{to{background-position:-36px 180px}}
 @keyframes wx-snow{to{background-position:24px 144px,-17px 102px}}
 @keyframes wx-flash{0%,93%,100%{filter:saturate(.72)}94%{filter:saturate(.72) brightness(1.9)}95%{filter:saturate(.72)}96.5%{filter:saturate(.72) brightness(1.6)}}
-@media (prefers-reduced-motion:reduce){.banner::after,body.wx-storm .banner{animation:none}}
+/* special seasons: Christmas (1 Dec – 6 Jan) and Halloween (31 Oct) */
+.logo .plate{position:relative}
+body.season-christmas .logo .plate::before{content:"";position:absolute;left:-6px;right:-5px;top:-10px;height:13px;background:#fff;border:2px solid #000;border-radius:10px 14px 6px 12px;
+  box-shadow:inset 0 -3px 0 #dfe7f2}
+body.season-christmas .banner::before{content:"";position:absolute;left:0;right:0;top:0;height:14px;z-index:1;pointer-events:none;
+  background:radial-gradient(circle at 6px 8px,#ff4d5e 0 3.5px,transparent 4px) 0 0/48px 14px,radial-gradient(circle at 18px 9px,#ffd34d 0 3.5px,transparent 4px) 0 0/48px 14px,
+    radial-gradient(circle at 30px 8px,#4dff8b 0 3.5px,transparent 4px) 0 0/48px 14px,radial-gradient(circle at 42px 9px,#5ec8ff 0 3.5px,transparent 4px) 0 0/48px 14px,
+    linear-gradient(#123 0 0) 0 4px/100% 1.5px no-repeat;
+  filter:drop-shadow(0 0 4px rgba(255,240,200,.8));animation:xmas-twinkle 1.6s steps(2) infinite}
+@keyframes xmas-twinkle{50%{filter:drop-shadow(0 0 2px rgba(255,240,200,.4)) brightness(.7)}}
+body.season-halloween{--accent:#FF7A1A;--accent-deep:#4A1F7A;--accent-light:#FFB347}
+body.season-halloween .banner::before{content:"";position:absolute;inset:0;z-index:1;pointer-events:none;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 18'%3E%3Cpath d='M20 6c1-3 2-3 2-3l1 3c3-3 9-4 17-1-4 1-6 4-6 7-3-2-6-2-9 0-1-2-3-3-5-3s-4 1-5 3c-3-2-6-2-9 0 0-3-2-6-6-7 8-3 14-2 17 1l1-3s1 0 2 3z' fill='%23111'/%3E%3C/svg%3E") no-repeat,url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 18'%3E%3Cpath d='M20 6c1-3 2-3 2-3l1 3c3-3 9-4 17-1-4 1-6 4-6 7-3-2-6-2-9 0-1-2-3-3-5-3s-4 1-5 3c-3-2-6-2-9 0 0-3-2-6-6-7 8-3 14-2 17 1l1-3s1 0 2 3z' fill='%23111'/%3E%3C/svg%3E") no-repeat;background-size:34px 15px,22px 10px;animation:bats 7s linear infinite}
+@keyframes bats{0%{background-position:-12% 70%,-20% 20%}50%{background-position:55% 15%,45% 65%}100%{background-position:112% 60%,118% 10%}}
+@media (prefers-reduced-motion:reduce){.banner::after,.banner::before,body.wx-storm .banner{animation:none}}
 
 /* bottom right prompts */
 .prompts{position:absolute;right:max(16px,calc(env(safe-area-inset-right,0px) + 4vw));bottom:calc(env(safe-area-inset-bottom,0px) + 4vh);
@@ -367,7 +381,16 @@ updateHud(); setInterval(updateHud, 5000);
 /* ================= the real London sky: time of day and weather ================= */
 // The sun's position over Westminster sets the time of day; the weather comes live from Open-Meteo (free, no key).
 // If the weather can't be fetched (offline, or a page that blocks it), the sky still follows the real sun.
-const SKY = {phase:'night', el:-30, az:0, kind:'clear', wx:null};
+const SKY = {phase:'night', el:-30, az:0, kind:'clear', wxKind:'clear', wx:null, season:''};
+// special seasons, by the London date: Christmas runs 1 December to Twelfth Night (6 January) and snows day and
+// night whatever the real weather; 31 October dresses the menu for Halloween
+function seasonNow(date){
+  const p = {}; new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/London',month:'numeric',day:'numeric'}).formatToParts(date).forEach(x => p[x.type] = +x.value);
+  if (p.month === 12 || (p.month === 1 && p.day <= 6)) return 'christmas';
+  if (p.month === 10 && p.day === 31) return 'halloween';
+  return '';
+}
+let seasonGreeted = '';
 const PHASE_NAMES = {dawn:'Dawn', day:'Day', dusk:'Dusk', twilight:'Twilight', night:'Night'};
 // solar elevation and azimuth (degrees, azimuth clockwise from north) over Westminster
 function sunPosition(date){
@@ -402,21 +425,35 @@ const WX_ICONS = (() => {
     drizzle:cloud(4) + '<path d="M9 18.5v1M13 19.5v1M17 18.5v1"/>',
     snow:cloud(4) + '<path d="M9 19h.01M13 21h.01M17 19h.01M11 22h.01M15 22h.01"/>',
     storm:cloud(4) + '<path d="M13 14l-3 4h4l-3 4"/>',
+    pumpkin:'<path d="M12 7c-4.5 0-8 2.8-8 6.5S7.5 20 12 20s8-2.8 8-6.5S16.5 7 12 7z"/><path d="M12 7V4.5l2-1.3"/><path d="M8.5 12l1.5 1.5L11.5 12M12.5 12l1.5 1.5 1.5-1.5M9 16.5q3 1.8 6 0"/>',
   };
 })();
 function updateSky(){
   const {el, az} = sunPosition(new Date());
   const phase = el >= 6 ? 'day' : el >= -4 ? (az < 180 ? 'dawn' : 'dusk') : el >= -12 ? 'twilight' : 'night';
-  const [kind, label] = SKY.wx ? weatherOf(SKY.wx.code) : ['clear', ''];
-  Object.assign(SKY, {el, az, phase, kind});
+  let [kind, label] = SKY.wx ? weatherOf(SKY.wx.code) : ['clear', ''];
+  const season = seasonNow(new Date()), wxKind = kind;
+  if (season === 'christmas'){ kind = 'snow'; label = 'Christmas snow'; }
+  if (season === 'halloween') label = [label, 'Halloween'].filter(Boolean).join(' · ');
+  Object.assign(SKY, {el, az, phase, kind, wxKind, season});   // kind is what the menu shows; wxKind is the real weather
   const cl = document.body.classList;
-  [...cl].forEach(c => { if (/^(phase|wx)-/.test(c)) cl.remove(c); });
-  cl.add('phase-' + phase, 'wx-' + kind);
+  [...cl].forEach(c => { if (/^(phase|wx|season)-/.test(c)) cl.remove(c); });
+  cl.add('phase-' + phase, 'wx-' + kind); if (season) cl.add('season-' + season);
   const dark = phase === 'night' || phase === 'twilight';
-  const icon = kind === 'clear' ? (dark ? 'moon' : 'sun') : kind === 'partly' ? (dark ? 'partlyMoon' : 'partlySun') : kind;
+  const icon = season === 'halloween' ? 'pumpkin' : kind === 'clear' ? (dark ? 'moon' : 'sun') : kind === 'partly' ? (dark ? 'partlyMoon' : 'partlySun') : kind;
   $('wxIco').innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${WX_ICONS[icon]}</svg>`;
   $('wxText').textContent = [PHASE_NAMES[phase], label, SKY.wx ? Math.round(SKY.wx.temp) + '°C' : ''].filter(Boolean).join(' · ');
   if (scene3d) scene3d.atmosphere(SKY);
+  // a greeting the first time the menu shows a special season
+  // (after a moment, once the page has finished loading and the loading screen is fading)
+  if (season && season !== seasonGreeted){
+    seasonGreeted = season;
+    setTimeout(() => {
+      $('feedTitle').textContent = season === 'christmas' ? 'Merry Christmas' : 'Happy Halloween';
+      notify(season === 'christmas' ? 'Snow over Westminster. Season\'s greetings from Tommy.' : 'Something\'s stirring on the Embankment tonight.');
+      setTimeout(() => { $('feedTitle').textContent = 'Tommy'; }, 4400);
+    }, 1500);
+  }
 }
 async function fetchWeather(){
   try {
@@ -707,7 +744,7 @@ function buildScene(){
     dusk:    {top:0x26347a,mid:0x7a5ea6,hor:0xff9050,glow:0xff6a40,fog:0x9a7080,fogDen:.0013,stars:.12,moon:.35,sunCol:0xff8040,cloudCol:0xe89878,hemiSky:0xb8a0d0,hemiGround:0x3a2228,hemiInt:.8, keyCol:0xff9050,keyInt:1,  lights:.6, facadeEm:.3, cityEm:.45,cityTint:2, pave:2.2,water:0x2a2a58,eye:0xb8c4e8,exposure:1},
   };
   const COLS = ['top','mid','hor','glow','fog','sunCol','cloudCol','hemiSky','hemiGround','keyCol','water','eye'];
-  const NUMS = ['fogDen','stars','moon','sunAmt','cloud','hemiInt','keyInt','lights','facadeEm','cityEm','cityTint','pave','exposure','wet','rain','snow','wind'];
+  const NUMS = ['fogDen','stars','moon','sunAmt','cloud','hemiInt','keyInt','lights','facadeEm','cityEm','cityTint','pave','exposure','wet','rain','snow','wind','snowCover','spooky'];
   const mkAtm = () => { const a = {keyDir:new THREE.Vector3(-3,6,-8).normalize(), storm:false}; COLS.forEach(k => a[k] = new THREE.Color()); NUMS.forEach(k => a[k] = 0); return a; };
   const atmCur = mkAtm(), atmTgt = mkAtm(); let atmReady = false;
   const greyOf = (c, amt) => { const l = c.r*.3 + c.g*.59 + c.b*.11; c.lerp(new THREE.Color(l,l,l), amt); return c; };
@@ -737,6 +774,12 @@ function buildScene(){
     T.snow = kind === 'snow' ? Math.min(1, .5 + mm*.3) : 0;
     T.wet = wet ? 1 : 0; T.wind = wx ? Math.min(.7, wx.wind/45) : .1; T.storm = kind === 'storm';
     if (kind === 'snow') T.pave *= 1.6;
+    // settled snow (all Christmas long, or when it really snows) and Halloween's orange-and-purple sky with ground mist
+    setSeason(st.season || '');
+    T.snowCover = st.season === 'christmas' ? 1 : kind === 'snow' ? .5 : 0;
+    T.spooky = st.season === 'halloween' ? 1 : 0;
+    if (T.spooky){ T.glow.lerp(new THREE.Color(0xff6a20), .6); T.hor.lerp(new THREE.Color(0x5a2a6a), .35); T.top.lerp(new THREE.Color(0x1a0a2a), .3);
+      T.fog.lerp(new THREE.Color(0x3a2448), .5); T.fogDen *= 1.6; T.moon = Math.max(T.moon, T.stars > .3 ? 1 : T.moon); }
     // the fog colour is linear, unlike the sky's
     T.fog.convertSRGBToLinear(); T.water.convertSRGBToLinear(); T.eye.convertSRGBToLinear();
     if (!atmReady){ atmReady = true; COLS.forEach(k => atmCur[k].copy(T[k])); NUMS.forEach(k => atmCur[k] = T[k]); atmCur.keyDir.copy(T.keyDir); applyAtm(0); }
@@ -774,7 +817,11 @@ function buildScene(){
     if (cityLit) cityMat.color.copy(cityBase).multiplyScalar(A.cityTint); else cityMat.color.setRGB(.1,.115,.15);
     shardMat.emissiveIntensity = .6*A.cityEm/.8; shardMat.color.setRGB(.008,.012,.03).multiplyScalar(A.cityTint);
     // wet paving turns glossy and picks up reflections
-    paving.color.copy(paveBase).multiplyScalar(A.pave*(1 - A.wet*.25)); paving.roughness = .75 - A.wet*.5; paving.metalness = .05 + A.wet*.2;
+    paving.color.copy(paveBase).multiplyScalar(A.pave*(1 - A.wet*.25)*(1 + A.snowCover*3)); paving.roughness = .75 - A.wet*.5 + A.snowCover*.2; paving.metalness = .05 + A.wet*.2;
+    // a big orange Halloween moon; the season's lights glow brighter as it gets dark
+    moon.material.color.setRGB(1, 1 - A.spooky*.35, 1 - A.spooky*.65); moon.scale.setScalar(90 + A.spooky*60);
+    for (const l of xmasLights) l.m.opacity = l.op*(.4 + .6*A.lights);
+    for (const m of pumpkinGlows) m.opacity = .35 + .6*A.lights;
     water.material.color.copy(A.water); eyeMat.color.copy(A.eye);
   }
   function stepAtm(dt, t){
@@ -786,6 +833,13 @@ function buildScene(){
     if (T.storm){ stormT -= dt; if (stormT < 0){ flash = 1; stormT = 4 + rand()*9; } }
     flash = flash > .02 ? flash*Math.exp(-dt*7)*(rand() < .9 ? 1 : .2) : 0;
     applyAtm(dt);
+    // Halloween bats: wheeling round Big Ben and over the river, wings flapping
+    if (hallow.visible) for (const b of bats){ b.a += b.sp*dt*(b.far ? 1 : 1.4);
+      const cx = b.far ? BX : 6, cz = b.far ? BZ + 12 : -10;
+      b.g.position.set(cx + Math.cos(b.a)*b.r, b.h + Math.sin(b.a*2 + b.ph)*(b.far ? 6 : 1.5), cz + Math.sin(b.a)*b.r*(b.far ? .6 : .5));
+      b.g.rotation.set(0, -b.a, 0); const f = Math.sin(t*14 + b.ph)*.8; b.wl.rotation.z = f; b.wr.rotation.z = -f; }
+    // Christmas lights twinkle
+    if (xmas.visible) for (let i=0;i<xmasLights.length;i++) xmasLights[i].m.opacity *= .8 + .2*Math.sin(t*3 + i*1.7);
     // precipitation
     const nRain = Math.floor(RAIN*A.rain), fall = 16, wind = A.wind*9;
     rainLines.visible = nRain > 0; rainGeo.setDrawRange(0, nRain*2);
@@ -1051,6 +1105,76 @@ function buildScene(){
   const tommyRig = buildTommy();
   tommyRig.root.position.set(2.15,0,0); tommyRig.root.rotation.y = -.42; tommyRig.root.scale.setScalar(.98); scene.add(tommyRig.root); attachGLB(tommyRig);
   addShadow(scene, 2.15, 0);
+
+  /* ---------- special seasons on the menu: Christmas and Halloween ---------- */
+  const xmas = new THREE.Group(), hallow = new THREE.Group(); xmas.visible = hallow.visible = false; scene.add(xmas, hallow);
+  let season = '';
+  // Christmas: snow settled on the embankment wall, bollards and phone box, a decorated tree, fairy lights strung between
+  // the lamps, and a Santa hat for Tommy. The lights glow brighter as it gets dark.
+  const xmasLights = [];
+  { const snowMat = std(0xf2f5fa,{roughness:.95});
+    box(220,.1,.98,snowMat,0,1.22,-3.9,xmas);
+    for (const x of [-6.5,-4.5,11.5]){ const c = new THREE.Mesh(new THREE.CylinderGeometry(.15,.15,.07,12), snowMat); c.position.set(x,.94,1.8); xmas.add(c); }
+    { const g = new THREE.Group(); g.position.set(9.6,0,-2.3); g.rotation.y = -.45; xmas.add(g); box(.86,.07,.86,snowMat,0,2.8,0,g); box(1.24,.05,1.24,snowMat,0,2.63,0,g); }
+    const tree = new THREE.Group(); tree.position.set(6.4,0,-1.9); xmas.add(tree);
+    box(.7,.45,.7,std(0x7a1d22,{roughness:.6}),0,.22,0,tree);                                        // the tub
+    { const t = new THREE.Mesh(new THREE.CylinderGeometry(.09,.12,.5,8), std(0x4a3020)); t.position.y = .65; tree.add(t); }
+    const needles = std(0x1d5532,{roughness:.85}), cols = [0xd8232a,0xf2c14e,0x2f6fd8,0xd9dde6,0xa35cf0];
+    for (let i=0;i<4;i++){
+      const r = 1.25 - i*.27, y = .85 + i*.82, cone = new THREE.Mesh(new THREE.ConeGeometry(r,1.45,18), needles); cone.position.y = y + .72; tree.add(cone);
+      { const c = new THREE.Mesh(new THREE.ConeGeometry(r*.55,.35,18), snowMat); c.position.y = y + 1.28; tree.add(c); }   // snow on each tier
+      for (let k=0;k<8;k++){ const a = k/8*Math.PI*2 + i*.4, h = .2 + rand()*.6, rr = r*(1 - h/1.45)*.98 + .02;
+        const b = new THREE.Mesh(new THREE.SphereGeometry(.075,10,8), std(cols[(k+i)%cols.length],{metalness:.6,roughness:.25}));
+        b.position.set(Math.cos(a)*rr, y + h, Math.sin(a)*rr); tree.add(b); } }
+    { const sh = new THREE.Shape(); for (let i=0;i<10;i++){ const a = i/10*Math.PI*2 - Math.PI/2, r = i%2 ? .1 : .24; sh[i ? 'lineTo' : 'moveTo'](Math.cos(a)*r, -Math.sin(a)*r); }
+      const star = new THREE.Mesh(new THREE.ShapeGeometry(sh), new THREE.MeshBasicMaterial({color:0xffd34d, side:THREE.DoubleSide})); star.position.set(0,4.62,0); tree.add(star);
+      const sg = new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex, color:0xffe08a, transparent:true, blending:THREE.AdditiveBlending, depthWrite:false})); sg.position.set(0,4.62,.05); sg.scale.set(1.6,1.6,1); tree.add(sg); xmasLights.push({m:sg.material, op:.9}); }
+    // bulbs: a spiral round the tree, and strings sagging between the lamp posts
+    const bulbs = (pts, size) => { const pos = new Float32Array(pts.length*3), col = new Float32Array(pts.length*3), pal = [[1,.3,.3],[1,.85,.35],[.35,1,.5],[.4,.75,1],[1,1,.9]];
+      pts.forEach((v,i) => { pos.set(v,i*3); col.set(pal[i%pal.length],i*3); });
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos,3)); g.setAttribute('color', new THREE.BufferAttribute(col,3));
+      const m = new THREE.PointsMaterial({map:glowTex, size, vertexColors:true, transparent:true, blending:THREE.AdditiveBlending, depthWrite:false});
+      xmasLights.push({m, op:1}); return new THREE.Points(g, m); };
+    const spiral = []; for (let i=0;i<70;i++){ const f = i/70, y = .95 + f*3.4, r = 1.3*(1-f)*.95 + .08, a = f*Math.PI*9; spiral.push([Math.cos(a)*r, y, Math.sin(a)*r]); }
+    tree.add(bulbs(spiral, .22));
+    const strings = []; for (let l=0; l<lampXs.length-1; l++) for (let i=0;i<=28;i++){ const f = i/28, x = lampXs[l] + (lampXs[l+1]-lampXs[l])*f; strings.push([x, 1.17 + 3.75 - Math.sin(f*Math.PI)*.75, -3.9]); }
+    xmas.add(bulbs(strings, .3)); }
+  // Halloween: glowing jack-o'-lanterns on the wall and beside Tommy, bats round Big Ben and over the river, and a witch's hat
+  const pumpkinGlows = [], bats = [];
+  { const skin = std(0xe0701c,{roughness:.55,emissive:0x2a0e00}), stem = std(0x4a5a22,{roughness:.8}), face = new THREE.MeshBasicMaterial({color:0xffb028, side:THREE.DoubleSide});
+    const tri = (pts) => { const sh = new THREE.Shape(); pts.forEach(([x,y],i) => sh[i ? 'lineTo' : 'moveTo'](x,y)); return new THREE.ShapeGeometry(sh); };
+    const eyeL = tri([[-.5,.12],[-.18,.12],[-.34,.42]]), eyeR = tri([[.18,.12],[.5,.12],[.34,.42]]), nose = tri([[-.09,-.02],[.09,-.02],[0,.12]]);
+    const mouth = tri([[-.55,-.18],[-.36,-.34],[-.22,-.24],[-.08,-.38],[.08,-.26],[.22,-.38],[.36,-.24],[.55,-.18],[.3,-.5],[-.3,-.5]]);
+    const pumpkin = (x,y,z,r,yaw) => { const g = new THREE.Group(); g.position.set(x,y,z); g.rotation.y = yaw; hallow.add(g);
+      for (let k=0;k<6;k++){ const a = k/6*Math.PI*2, b = new THREE.Mesh(new THREE.SphereGeometry(r*.62,16,12), skin); b.scale.set(.85,1.12,.85); b.position.set(Math.cos(a)*r*.38, r*.62, Math.sin(a)*r*.38); g.add(b); }
+      const st = new THREE.Mesh(new THREE.CylinderGeometry(r*.07,r*.1,r*.35,8), stem); st.position.set(0,r*1.38,0); st.rotation.z = .25; g.add(st);
+      for (const geo of [eyeL,eyeR,nose,mouth]){ const f = new THREE.Mesh(geo, face); f.scale.setScalar(r*.95); f.position.set(0,r*.66,r*.98); g.add(f); }
+      const glow = new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex, color:0xff8a20, transparent:true, blending:THREE.AdditiveBlending, depthWrite:false}));
+      glow.position.set(0,r*.66,r*1.2); glow.scale.set(r*5,r*5,1); g.add(glow); pumpkinGlows.push(glow.material); };
+    for (const [x,r] of [[-5.6,.24],[-1.4,.2],[7.6,.26],[13.4,.22],[18.5,.2]]) pumpkin(x, 1.17, -3.9, r, -.15);
+    pumpkin(4.5, 0, .9, .34, -.35); pumpkin(5.2, 0, 1.5, .22, -.6);
+    // bats: two flocks, a close one over the river and a big swirl round Big Ben's clock
+    const batMat = new THREE.MeshBasicMaterial({color:0x0c0a10, side:THREE.DoubleSide});
+    const wing = tri([[0,0],[.36,.14],[.32,-.04],[.2,.02],[.14,-.09],[0,-.03]]);
+    for (let i=0;i<20;i++){ const g = new THREE.Group(), far = i >= 7;
+      const body = new THREE.Mesh(new THREE.SphereGeometry(.06,8,6), batMat); body.scale.set(1,.8,1.6); g.add(body);
+      const wl = new THREE.Mesh(wing, batMat), wr = new THREE.Mesh(wing, batMat); wr.scale.x = -1; g.add(wl, wr);
+      g.scale.setScalar(far ? 7 + rand()*4 : 1.1 + rand()*.6); hallow.add(g);
+      bats.push({g, wl, wr, far, a:rand()*7, sp:(far ? .25 : .55) + rand()*.3, r:far ? 22 + rand()*28 : 5 + rand()*8, h:far ? 66 + rand()*30 : 6 + rand()*5, ph:rand()*7}); } }
+  // hats for Tommy
+  const santaHat = new THREE.Group(), witchHat = new THREE.Group();
+  { santaHat.position.set(0,.33,-.02); santaHat.rotation.x = -.3; tommyRig.head.add(santaHat);
+    part(new THREE.ConeGeometry(.19,.4,24), toon(0xd2232a), santaHat, [0,.2,-.02], [-.25,0,.12], [1,1,1], .012);
+    part(new THREE.TorusGeometry(.19,.05,10,28), toon(0xf6f6f6), santaHat, [0,.01,0], [Math.PI/2,0,0], [1,1,1], .01);
+    part(new THREE.SphereGeometry(.065,14,10), toon(0xf6f6f6), santaHat, [.05,.4,-.12], [0,0,0], [1,1,1], .01);
+    witchHat.position.set(0,.34,-.02); witchHat.rotation.x = -.15; tommyRig.head.add(witchHat);
+    part(new THREE.CylinderGeometry(.36,.36,.025,32), toon(0x17141f), witchHat, [0,0,0], [0,0,0], [1,1,1], .01);
+    part(new THREE.CylinderGeometry(.18,.185,.06,24), toon(0x7a3fd0), witchHat, [0,.04,0], [0,0,0], [1,1,1], .006);
+    part(new THREE.ConeGeometry(.175,.48,24), toon(0x17141f), witchHat, [0,.27,-.03], [-.2,0,.06], [1,1,1], .012);
+    santaHat.visible = witchHat.visible = false; }
+  function setSeason(sz){
+    season = sz; xmas.visible = santaHat.visible = sz === 'christmas'; hallow.visible = witchHat.visible = sz === 'halloween';
+  }
 
   /* hex colours are written as sRGB; convert once to the linear space the renderer works in */
   function linearize(sc){
@@ -2031,9 +2155,9 @@ function buildScene(){
     // the tutorial (the morning after the speech) is always set in the day: a fixed mid-morning sun from the south-east,
     // under the live weather. Later free roam can follow the real time of day (setTutorial(false)).
     let tutorial = true;
-    const tutorialSky = () => ({phase:'day', el:38, az:118, kind:SKY.kind, wx:SKY.wx});
+    const tutorialSky = () => ({phase:'day', el:38, az:118, kind:SKY.wxKind, wx:SKY.wx});
     function skyStep(dt, t, tx, ty, tz){
-      const st = tutorial ? tutorialSky() : SKY;
+      const st = tutorial ? tutorialSky() : Object.assign({}, SKY, {kind:SKY.wxKind, season:''});   // the seasonal snow is the menu's alone
       const key = [st.phase, st.kind, st.wx ? st.wx.cloud + '/' + st.wx.precip : '', Math.round(st.el), Math.round(st.az/2)].join('|');
       if (key !== skyKey){ skyKey = key; skyTarget(st); }
       const k = Math.min(1, dt*.6), A = skyCur, T = skyTgt;

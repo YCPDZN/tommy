@@ -38,6 +38,16 @@ A game starring Tommy (no last name), set in Westminster, London.
       - The menu scene looks west across the river (north is +x), so the real sun sets behind Parliament.
     - **UI:** `body.phase-*` shifts the purple accent (`--accent`, `--accent-deep`, `--accent-light`). `body.wx-*` adds rain, snow or fog effects, storm flashes and an overcast dullness to the banner.
       - The HUD shows a weather icon plus "Phase · Weather · °C" under the date.
+  - **Special seasons on the menu** (`seasonNow()`, by the London date; `setSeason()` in `buildScene`):
+    - **Christmas** (1 Dec – 6 Jan, Twelfth Night): it snows day and night whatever the real weather ("Christmas snow"). Free roam keeps the real weather (`SKY.wxKind`).
+      - Snow settles on the paving, the wall, the bollards and the phone box.
+      - There's a decorated tree with a star and spiral lights, fairy lights strung between the lamps, and a Santa hat on Tommy.
+      - The UI gets fairy lights along the banner and a snow cap on the logo plate.
+    - **Halloween** (31 Oct):
+      - Jack-o'-lanterns stand on the wall and beside Tommy, and two flocks of bats fly (round Big Ben and over the river).
+      - The sky is orange and purple with ground mist and a big orange moon. Tommy wears a witch's hat.
+      - The UI accent turns pumpkin orange, bats fly across the banner, and the HUD shows a pumpkin icon with "Halloween".
+    - Both keep the real time of day and greet the player once in the feed toast.
   - The UI accent is **purple** (`--accent` #A35CF0 / `--accent-deep` #5A27A8, at the user's request). It's used across the menu, subtitles, telescope panel, RUN button and minimap arrow. Tommy's shirt stays blue.
 - **Story Mode** (just "Story Mode", no chapter numbers) opens with the cutscene "The Address". It's in the same file. **The PM's cutscene is always at night** (its own fixed scenes, exposure 1.15), whatever the real sky (user's rule). Prime Minister **Jordan Andreas** (Conservative Party; fictional) speaks outside 10 Downing Street, with press and a police officer.
   - Tommy is **not** at the speech. The cutscene opens in Tommy's flat, where the speech plays live on his TV ("LDN News 24").
