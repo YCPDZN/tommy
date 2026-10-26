@@ -55,6 +55,12 @@ A game starring Tommy (no last name), set in Westminster, London.
 - `build/wrap.ps1`: wraps the page into a full HTML document at `build/game.html` for local preview.
 - `.claude/launch.json`: a local preview server (`tommy`, port 8766) serving `build/`. If the preview pane serves stale content, run `py -m http.server 8766 --directory build` and open `http://localhost:8766/game.html`.
 
+## GitHub
+
+- Private repo: https://github.com/YCPDZN/tommy (branch `main`), so the user can work on the go, for example with Claude Code on the web.
+- Commit and push after meaningful changes. Build outputs (zip, exe, `build/game.html`, `build/audio`, `build/assets`) are gitignored.
+- The user's GitHub organisation is deliberately not involved.
+
 ## Decisions so far
 
 - **`Tommy-itch.zip`** is the itch.io HTML upload, built by `build\make-itch.ps1`. It holds `index.html`, `audio/` and `assets/water.jpg` + `tree-sheet.jpg`, with forward-slash paths. Rebuild it after game changes.
