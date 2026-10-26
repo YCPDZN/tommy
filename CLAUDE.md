@@ -40,6 +40,10 @@ A game starring Tommy (no last name), set in Westminster, London.
   - The layout is deliberately tidy. An even 100 m street grid with 10 m side streets runs around the main roads (Whitehall, The Mall, the Strand, Northumberland Ave, Pall Mall, Charing Cross Rd, the Embankment, Bridge St/Westminster Bridge, Parliament Square).
     - Each grid cell holds one 78 m mansion block (or four 34 m blocks next to a main road), at even heights of 21/24/27 m with district materials.
     - Whitehall has a continuous 26 m Portland-stone frontage. Don't go back to random scattered buildings.
+    - On Whitehall's west side, between Horse Guards and the Cenotaph, stand the **Cabinet Office (70 Whitehall)** and **Downing Street** (`DS`).
+      - Downing Street is a gated cul-de-sac with Numbers 10–12 in black brick on its north side and a constable on the door of No. 10.
+      - It is **inaccessible**: steel gates block it, guarded by three armed police (caps, body armour, carbines). E at the gate gets a "move along" line (`GUARD_LINES`).
+      - Both are landmarks on the minimap (`10`, `CO`) and in the telescope.
   - **Street life** (`life` in `buildFree`): about 64 cars, black cabs and red double-deckers drive on the left along `roads` and brake for Tommy. Buses stay on main roads. About 100 pedestrians walk the pavements, sidestep each other and Tommy, and never overlap.
     - Everything is pooled within `LIFE_R` of Tommy and recycled out of sight. Cars and people block Tommy.
     - Pedestrians are the cutscene's cartoon extras: `figure()` sits at `buildScene` level and is shared. 24 looks are baked once into merged, vertex-coloured meshes (one per moving part) and reused, so the crowd stays cheap.
