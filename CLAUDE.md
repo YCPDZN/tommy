@@ -2,7 +2,14 @@
 
 A game starring Tommy (no last name), set in Westminster, London.
 
-**Right now Tommy uses the cartoon model** (`USE_GLB = false`; the user asked for "the old Tommy model" back). Setting `USE_GLB = true` brings back **the user's model `assets/tommy.glb`**: "tommy model 2.glb" from `Documents\Tommy - The GTA Game`, a Tripo export. It's loaded with GLTFLoader and SkeletonUtils (three r128 examples/js from jsdelivr) and attached by `attachGLB(rig)`.
+**Tommy wears his own cartoon model, `assets/tommy-toon.glb`** (the user's "Tommy.glb" from `Documents\Tommy - The GTA Game`), and **the police officer on the door of No. 10 in the cutscene is PC Stephen Marsh** (`assets/stephen-marsh.glb`, from "Stephen Marsh.glb").
+- Both are three.js-exported cartoon models built from separate parts with named pivots (Torso, Head, LeftArm, RightArm, LeftLeg, RightLeg) at the shoulders and hips, facing +z, with no skeleton.
+- `wearChar(rig, name)` in `buildScene` loads `assets/<name>-glb.txt` (base64; artifacts won't serve .glb), toon-shades it, scales it to the toon rig's height, and swaps the rig's body, torso, arms, legs and head for the model's pivots. So `idle()` and the walk animate it unchanged.
+  - Props on the old head and arms (`userData.prop`: the seasonal hats and the sparkler) move across to the model.
+  - The toon rigs from `buildTommy()` / `figure()` show until the files load, or if they fail.
+- If either model changes, copy it in again and regenerate its `-glb.txt` with `[Convert]::ToBase64String`. Publish with `assets/tommy-toon-glb.txt` and `assets/stephen-marsh-glb.txt` in `files`; the itch build includes them.
+
+**The rigged Tripo model is off** (`USE_GLB = false`). Setting `USE_GLB = true` brings back **the user's model `assets/tommy.glb`**: "tommy model 2.glb" from `Documents\Tommy - The GTA Game`, a Tripo export. It's loaded with GLTFLoader and SkeletonUtils (three r128 examples/js from jsdelivr) and attached by `attachGLB(rig)`.
 - Tripo's rig was unusable: the bones had no rest transforms, the template skeleton faced +x, and nearly every vertex was weighted to the hips. `build/rig-glb.py` (run with `py -I`) re-rigs it:
   - it turns the skeleton to face +z, gives the bones pure translations with matching bind matrices, and strips the `mixamorig:` prefix;
   - it recomputes the skin weights from each vertex's distance to the bone segments (best 4, legs kept apart).

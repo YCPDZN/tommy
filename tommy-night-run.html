@@ -1148,6 +1148,48 @@ function buildScene(){
     r.blinkAt -= dt; const blinking = r.blinkAt < 0 && r.blinkAt > -.13; if (r.blinkAt < -.13) r.blinkAt = 2.5 + rand()*3;
     r.eyes.scale.y = blinking ? .12 : 1;
   }
+  /* ---------- the user's cartoon character models (assets/<name>-glb.txt: GLB as base64, since artifacts won't serve .glb) ----------
+     They're built from separate parts with named pivots (Torso, Head, LeftArm, RightArm, LeftLeg, RightLeg) at the
+     shoulders and hips, facing +z: the same layout as the toon rigs, so idle() and the walk drive them unchanged. */
+  const charGLBs = {};
+  const loadChar = name => charGLBs[name] || (charGLBs[name] = THREE.GLTFLoader ? fetch('assets/' + name + '-glb.txt').then(r => { if (!r.ok) throw new Error(r.status); return r.text(); }).then(b64 => {
+    const bin = atob(b64.trim()), buf = new Uint8Array(bin.length); for (let i=0;i<bin.length;i++) buf[i] = bin.charCodeAt(i);
+    return new Promise((res, rej) => new THREE.GLTFLoader().parse(buf.buffer, '', g => res(g.scene), rej));
+  }) : Promise.reject(new Error('no GLTFLoader')));
+  // swap a toon rig's body for a character model `height` metres tall; props on the old head and arms (hats, the sparkler) move across
+  function wearChar(rig, name){
+    loadChar(name).then(src => {
+      const m = src.clone(true);
+      m.traverse(o => { if (!o.isMesh) return; o.castShadow = true;
+        // toon-shade the model to match the other cartoon characters (GLTF colours are already linear)
+        const s = o.material, c = s.color ? s.color.clone() : new THREE.Color(1,1,1);
+        const t = new THREE.MeshToonMaterial({color:c, map:s.map || null, gradientMap:grad, emissive:s.map ? new THREE.Color(.22,.22,.22) : c.clone().multiplyScalar(.22), emissiveMap:s.map || null,
+          toneMapped:false, side:s.side, transparent:s.transparent, opacity:s.opacity});
+        t.userData.lin = true; o.material = t; });
+      rig.root.updateMatrixWorld(true);
+      const old = new THREE.Box3(), skip = new Set();
+      rig.body.traverse(o => { if (o.userData.prop || skip.has(o.parent)) skip.add(o); else if (o.isMesh) old.expandByObject(o); });
+      const oldH = old.max.y - old.min.y;
+      const holder = new THREE.Group(), box = new THREE.Box3().setFromObject(m), s = oldH/rig.root.scale.y/(box.max.y - box.min.y);
+      holder.scale.setScalar(s); holder.position.y = -box.min.y*s; holder.add(m);
+      const body = new THREE.Group(); body.add(holder); rig.root.add(body);
+      const N = n => m.getObjectByName(n), byX = (a,b) => a.position.x - b.position.x;
+      const arms = [N('LeftArm'), N('RightArm')].sort(byX), legs = [N('LeftLeg'), N('RightLeg')].sort(byX), head = N('Head'), torso = N('Torso');
+      arms.forEach((a,i) => a.rotation.copy(rig.arms[i].rotation)); head.rotation.copy(rig.head.rotation);
+      rig.root.updateMatrixWorld(true);
+      // props: scale with the head and keep their place relative to its top; the sparkler goes to the new hand
+      const hb0 = new THREE.Box3().setFromObject(rig.head.children[0]), hb1 = new THREE.Box3().setFromObject(head);
+      const k = (hb1.max.y - hb1.min.y)/(hb0.max.y - hb0.min.y), c0 = hb0.getCenter(new THREE.Vector3()), c1 = hb1.getCenter(new THREE.Vector3());
+      for (const p of rig.head.children.filter(o => o.userData.prop)){
+        const w = p.getWorldPosition(new THREE.Vector3()).sub(c0).multiplyScalar(k).add(c1);
+        head.attach(p); p.position.copy(head.worldToLocal(w)); p.scale.multiplyScalar(k); }
+      rig.arms.forEach((a,i) => { for (const p of a.children.filter(o => o.userData.prop)){
+        const ab = new THREE.Box3().setFromObject(arms[i]), w = new THREE.Vector3((ab.min.x+ab.max.x)/2, ab.min.y + .06, (ab.min.z+ab.max.z)/2 + .02);
+        arms[i].attach(p); p.position.copy(arms[i].worldToLocal(w)); } });
+      rig.body.visible = false;
+      Object.assign(rig, {body, torso, arms, legs, head, eyes:new THREE.Object3D(), torsoY:torso.position.y, char:name});
+    }).catch(e => console.warn(name + ' model failed to load', e));
+  }
   const tommyRig = buildTommy();
   tommyRig.root.position.set(2.15,0,0); tommyRig.root.rotation.y = -.42; tommyRig.root.scale.setScalar(.98); scene.add(tommyRig.root); attachGLB(tommyRig);
   addShadow(scene, 2.15, 0);
@@ -1287,7 +1329,7 @@ function buildScene(){
     const PAL = [[1,.25,.2],[1,.8,.25],[.35,1,.45],[.4,.65,1],[1,.4,.9],[1,1,1],[.7,.4,1]];
     fw = {N, PER, pos, col, geo, b:Array.from({length:N}, (_,i) => ({state:'wait', t:-i*.7 - rand(), vel:new Float32Array(PER*3), c:PAL[0], x:0, y:0, z:0, top:80})), PAL};
     // Tommy's sparkler, held up in his hand, spitting sparks
-    const stick = new THREE.Group(); stick.position.set(0,-.53,.02); tommyRig.arms[1].add(stick); fire.stick = stick;
+    const stick = new THREE.Group(); stick.position.set(0,-.53,.02); stick.userData.prop = true; tommyRig.arms[1].add(stick); fire.stick = stick;
     const rod = new THREE.Mesh(new THREE.CylinderGeometry(.006,.006,.5,5), std(0x8a8a8a,{metalness:.6})); rod.rotation.x = Math.PI/2; rod.position.z = .22; stick.add(rod);
     const SP = 40, spp = new Float32Array(SP*3), sgeo = new THREE.BufferGeometry(); sgeo.setAttribute('position', new THREE.BufferAttribute(spp,3));
     sparks = new THREE.Points(sgeo, new THREE.PointsMaterial({map:glowTex, color:0xffe2a0, size:.07, transparent:true, blending:THREE.AdditiveBlending, depthWrite:false}));
@@ -1300,6 +1342,8 @@ function buildScene(){
       part(new THREE.SphereGeometry(.06,14,10), toon(0xf8f6f2), e, [0,.12,0], [0,0,0], [.75,2.4,.4], .01);
       part(new THREE.SphereGeometry(.035,12,8), toon(0xffa8c4), e, [0,.12,.02], [0,0,0], [.6,2.6,.3], 0); }
     bunnyEars.visible = false; }
+  santaHat.userData.prop = witchHat.userData.prop = bunnyEars.userData.prop = true;
+  wearChar(tommyRig, 'tommy-toon');
   function setSeason(sz){
     season = sz; xmas.visible = santaHat.visible = sz === 'christmas'; hallow.visible = witchHat.visible = sz === 'halloween';
     easter.visible = bunnyEars.visible = sz === 'easter'; bonfire.visible = fire.stick.visible = sz === 'bonfire';
@@ -1468,6 +1512,7 @@ function buildScene(){
     const extras = [];
     const officer = figure({coat:0x141a2e, legs:0x141a2e, helmet:true, lids:true, wide:1.08}); officer.root.position.set(1.55,.15,.75); officer.posed = true;
     officer.arms.forEach(a => { a.rotation.x = .25; }); sc.add(officer.root); extras.push(officer);
+    wearChar(officer, 'stephen-marsh');   // the officer on the door is PC Stephen Marsh
     const press = [];
     [[-3.6,6.6],[-2.4,6.9],[-1.0,6.55],[0.6,6.75],[1.9,6.6],[3.2,6.9],[4.3,6.6],[-4.6,6.9]].forEach(([x,z],i) => {
       const looks = [
@@ -2440,7 +2485,7 @@ function buildScene(){
       colliders.push([TEL.x-.3,TEL.z-.3,TEL.x+.3,TEL.z+.3]); }
 
     /* ---- Tommy ---- */
-    const tommy = buildTommy(); ph.add(tommy.root); attachGLB(tommy);
+    const tommy = buildTommy(); ph.add(tommy.root); attachGLB(tommy); wearChar(tommy, 'tommy-toon');
     const shadow = addShadow(ph, 0, 0, 1.1, .9);
     const P = {x:5.6, z:-5, yaw:Math.PI*.5, camYaw:-Math.PI*.35, pitch:.32, walk:0, speed:0};
     Object.assign(MAP, {roads, cols:cityCol, obbs, bankX});
