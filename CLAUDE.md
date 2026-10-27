@@ -74,7 +74,7 @@ A game starring Tommy (no last name), set in Westminster, London.
   - It cuts between the flat and the broadcast. It ends on his locked bedroom door ("Tommy's Room – Keep Out"), with warm light under it.
   - Tommy is **not** asleep. A seductive, dominatrix-style woman behind the door bosses him about, ending with "I want you to rock my world" (5 lines in `HER_LINES`). Keep it suggestive, never explicit.
     - After all 5 of her lines, Tommy has 10 lines of his own: an OG, rude "sigma male" who swears at her, not replies to hers.
-      - **Tommy is an anti-hero who protects London, not a villain who wants it** (user's rule). He's been fighting crime on his own and means to clean up the streets. He talks to her conversationally, calls her a hoe and throws her out. He never says "silence" (user's rule). (10 lines in `TOMMY_LINES`, cyan subtitles). His voice clips would be `audio/TOMMY1-10.mp3` (not recorded yet; lines without a clip are timed by length).
+      - **Tommy is an anti-hero who protects London, not a villain who wants it** (user's rule). He's been fighting crime on his own and means to clean up the streets. He talks to her conversationally, calls her a hoe and throws her out. He never says "silence" (user's rule). (10 lines in `TOMMY_LINES`, cyan subtitles). His voice clips are the user's recordings `audio/TOMMY1-10.mp3`, muffled through the door.
   - Andreas has swept-up grey hair, big round eyes, a dark maroon suit, a white shirt, a blue tie, a gold belt buckle and black trousers.
   - His 10 lines are in `LINES`. The key line is "I am willing to help end the war on crime." Camera shots are in `SHOTS` / `LINE_SHOTS`.
 - After the woman's lines comes a "The next day" card, then **free roam** in Tommy's home (`buildFree`).
