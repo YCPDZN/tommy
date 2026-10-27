@@ -168,6 +168,7 @@ body.season-bonfire .banner::before{content:"";position:absolute;inset:0;z-index
   text-shadow:0 2px 0 #000,0 0 6px #000,0 0 14px rgba(0,0,0,.8)}
 .subs b{color:var(--accent);font-weight:700}
 .subs b.her{color:#FF8FB1}
+.subs b.tommy{color:#5FC4F0}
 .bug{position:absolute;right:max(16px,calc(env(safe-area-inset-right,0px) + 4vw));top:calc(11vh + 24px);display:flex;align-items:center;gap:10px;
   background:rgba(0,0,0,.6);padding:5px 12px 5px 5px;font-size:16px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
 .bug span{background:#c4161c;padding:2px 8px}
@@ -3199,6 +3200,14 @@ const HER_LINES = [
   "Did I say you could look at me? Eyes down, Tommy.",
   "Now get in here, Tommy. I want you to rock my world.",
 ];
+// Tommy answers each of her lines; his clips (audio/TOMMY1-5.mp3) are optional, and lines without one are timed by length
+const TOMMY_LINES = [
+  "Knees? I don't kneel, sweetheart. Not for you, not for the Prime Minister, not for anyone.",
+  "In charge? Cute. There's only one boss in this flat, and you're looking at him.",
+  "Punished? The Met, the taxman and my landlord have all tried. You're not even top ten.",
+  "Eyes down? No. Here's how this works now: you talk less. A lot less.",
+  "You want your world rocked? Then silence. Not another word.",
+];
 const story = {active:false, skip:false, next:null};
 
 /* main menu theme: loops on the menu at the Music Volume setting; browsers only allow it after the first click or key press */
@@ -3259,13 +3268,14 @@ async function startStory(){
   Object.assign(story, {active:true, skip:false});
   themeStop();
   audioCtx();   // unlock audio while we still have the player's click or key press
-  const clips = Promise.all([...LINES.map((_,i) => loadClip('INTRO' + (i+1))), ...HER_LINES.map((_,i) => loadClip('GF' + (i+1)))]);
+  const clips = Promise.all([...LINES.map((_,i) => loadClip('INTRO' + (i+1))), ...HER_LINES.map((_,i) => loadClip('GF' + (i+1))), ...TOMMY_LINES.map((_,i) => loadClip('TOMMY' + (i+1)))]);
   await fadeTo(true);
   document.body.classList.add('in-story');
   $('titleCard').hidden = false;
   scene3d.play();
   await wait(2800);
-  const [pmClips, herClips] = await clips.then(b => [b.slice(0, LINES.length), b.slice(LINES.length)]);
+  const H = LINES.length + HER_LINES.length;
+  const [pmClips, herClips, tomClips] = await clips.then(b => [b.slice(0, LINES.length), b.slice(LINES.length, H), b.slice(H)]);
   $('titleCard').hidden = true;
   $('subs').textContent = ''; $('cine').hidden = false; $('nextBtn').focus({preventScroll:true});
   await fadeTo(false);
@@ -3281,12 +3291,17 @@ async function startStory(){
   if (!story.skip){
     // the speech ends; the camera finds Tommy's locked bedroom door, and he isn't alone
     $('bug').hidden = true; $('lower').hidden = true;
-    const total = HER_LINES.reduce((s,l,i) => s + clipMs(herClips[i], l), 0);
+    const total = HER_LINES.reduce((s,l,i) => s + clipMs(herClips[i], l) + clipMs(tomClips[i], TOMMY_LINES[i]), 0);
     scene3d.outro(total/1000);
+    // she gives the orders, and Tommy shuts each one down
     for (let i = 0; i < HER_LINES.length && !story.skip; i++){
       playClip(herClips[i], 'door');
       $('subs').innerHTML = `<b class="her">Woman (behind the door):</b> ${HER_LINES[i]}`;
       await wait(clipMs(herClips[i], HER_LINES[i]));
+      if (story.skip) break;
+      playClip(tomClips[i], 'door');
+      $('subs').innerHTML = `<b class="tommy">Tommy (behind the door):</b> ${TOMMY_LINES[i]}`;
+      await wait(clipMs(tomClips[i], TOMMY_LINES[i]));
     }
   }
   stopClip();
