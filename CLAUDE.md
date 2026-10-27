@@ -66,7 +66,7 @@ A game starring Tommy (no last name), set in Westminster, London.
   - Tommy is **not** at the speech. The cutscene opens in Tommy's flat, where the speech plays live on his TV ("LDN News 24").
   - It cuts between the flat and the broadcast. It ends on his locked bedroom door ("Tommy's Room – Keep Out"), with warm light under it.
   - Tommy is **not** asleep. A seductive, dominatrix-style woman behind the door bosses him about, ending with "I want you to rock my world" (5 lines in `HER_LINES`). Keep it suggestive, never explicit.
-    - Tommy answers each of her lines as a cool, "sigma male" put-down, ending by telling her "silence" (5 lines in `TOMMY_LINES`, cyan subtitles). His voice clips would be `audio/TOMMY1-5.mp3` (not recorded yet; lines without a clip are timed by length).
+    - After all 5 of her lines, Tommy answers with 5 savage, rude "sigma male" put-downs, ending with "Silence" (5 lines in `TOMMY_LINES`, cyan subtitles). His voice clips would be `audio/TOMMY1-5.mp3` (not recorded yet; lines without a clip are timed by length).
   - Andreas has swept-up grey hair, big round eyes, a dark maroon suit, a white shirt, a blue tie, a gold belt buckle and black trousers.
   - His 10 lines are in `LINES`. The key line is "I am willing to help end the war on crime." Camera shots are in `SHOTS` / `LINE_SHOTS`.
 - After the woman's lines comes a "The next day" card, then **free roam** in Tommy's home (`buildFree`).

@@ -3200,13 +3200,13 @@ const HER_LINES = [
   "Did I say you could look at me? Eyes down, Tommy.",
   "Now get in here, Tommy. I want you to rock my world.",
 ];
-// Tommy answers each of her lines; his clips (audio/TOMMY1-5.mp3) are optional, and lines without one are timed by length
+// once she's finished, Tommy answers; his clips (audio/TOMMY1-5.mp3) are optional, and lines without one are timed by length
 const TOMMY_LINES = [
-  "Knees? I don't kneel, sweetheart. Not for you, not for the Prime Minister, not for anyone.",
-  "In charge? Cute. There's only one boss in this flat, and you're looking at him.",
-  "Punished? The Met, the taxman and my landlord have all tried. You're not even top ten.",
-  "Eyes down? No. Here's how this works now: you talk less. A lot less.",
-  "You want your world rocked? Then silence. Not another word.",
+  "Are you done? Good. I stopped listening about three sentences ago.",
+  "On my knees? Sweetheart, the only thing kneeling in this flat is your ego.",
+  "In charge? You couldn't run a bath, never mind this room.",
+  "Punish me? I've been nicked, sued and dumped twice this year. You're a Tuesday.",
+  "Rock your world? Silence. You've used up all your words for the year.",
 ];
 const story = {active:false, skip:false, next:null};
 
@@ -3293,12 +3293,13 @@ async function startStory(){
     $('bug').hidden = true; $('lower').hidden = true;
     const total = HER_LINES.reduce((s,l,i) => s + clipMs(herClips[i], l) + clipMs(tomClips[i], TOMMY_LINES[i]), 0);
     scene3d.outro(total/1000);
-    // she gives the orders, and Tommy shuts each one down
+    // she gives all her orders, then Tommy shuts her down
     for (let i = 0; i < HER_LINES.length && !story.skip; i++){
       playClip(herClips[i], 'door');
       $('subs').innerHTML = `<b class="her">Woman (behind the door):</b> ${HER_LINES[i]}`;
       await wait(clipMs(herClips[i], HER_LINES[i]));
-      if (story.skip) break;
+    }
+    for (let i = 0; i < TOMMY_LINES.length && !story.skip; i++){
       playClip(tomClips[i], 'door');
       $('subs').innerHTML = `<b class="tommy">Tommy (behind the door):</b> ${TOMMY_LINES[i]}`;
       await wait(clipMs(tomClips[i], TOMMY_LINES[i]));
