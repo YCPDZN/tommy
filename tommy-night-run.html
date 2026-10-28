@@ -2757,6 +2757,170 @@ function buildScene(){
       lm('The Admiralty', -24, 10, 84, 50, "The Ripley Building of 1726, the Royal Navy's old headquarters, behind Robert Adam's columned screen on Whitehall.");
       lm('Old Admiralty Building', -40, 15, 115, 90, "The Admiralty Extension of the 1890s in red brick and Portland stone, on the north side of Horse Guards Parade."); }
 
+    /* ================= East London: Aldgate, Spitalfields, Brick Lane, Shoreditch and Whitechapel ================= */
+    // Placed like the City (real distances about 1.15 times from Trafalgar Square), so it lines up with the Gherkin and the Tower.
+    // a row of narrow shopfronts each side of a road (pts), `off` metres from its centreline, merged per material; every
+    // `propEvery`th one gets a prop over the pavement from prop(group, x, z, yaw, k)
+    function shopRow(pts, off, mats, o={}){ const out = [];
+      for (let i=1;i<pts.length;i++){ const a = pts[i-1], b = pts[i], dx = b[0]-a[0], dz = b[1]-a[1], len = Math.hypot(dx,dz), ux = dx/len, uz = dz/len, yaw = Math.atan2(-uz, ux), D = o.depth || 14;
+        for (const sd of [1,-1]) for (let s=o.start ?? 12, n=0; s<len-12; n++){ const w = 8 + rand()*4, t = (s + w/2)/len, cx = a[0] + dx*t - uz*sd*off, cz = a[1] + dz*t + ux*sd*off;
+          if (!zones.some(([x1,z1,x2,z2]) => cx > x1-6 && cx < x2+6 && cz > z1-6 && cz < z2+6)){
+            const mat = mats[Math.floor(rand()*mats.length)], g = mgrp(mat, cx, cz); g.occlude = true; rbox(g, cx, cz, w, D, (o.hMin || 10) + rand()*((o.hMax || 15) - (o.hMin || 10)), yaw);
+            obbs.push([cx, cz, w/2, D/2, Math.cos(yaw), Math.sin(yaw)]); const R = w/2 + D/2 + 1; zones.push([cx-R,cz-R,cx+R,cz+R]);
+            out.push({x:cx, z:cz, yaw}); }
+          s += w + .4; } }
+      return out; }
+    // shopfront facades with made-up names, and Shoreditch's murals over brick
+    const shopTex = (base, name, mural) => { const t = srgb(canvasTex(256,256,(q,w,h)=>{ q.fillStyle = base; q.fillRect(0,0,w,h);
+        if (mural){ q.fillStyle='rgba(0,0,0,.12)'; for (let y=0;y<170;y+=5){ q.fillRect(0,y,w,1); for (let x=(y/5%2)*10;x<w;x+=20) q.fillRect(x,y,1,5); }
+          const P = ['#ff3f7f','#ffd23f','#3fd6ff','#7a3fff','#3fff8a','#ff7a1f','#ffffff','#111'];
+          for (let k=0;k<7;k++){ q.fillStyle = P[Math.floor(rand()*P.length)]; q.beginPath(); q.arc(rand()*w, 20 + rand()*130, 18 + rand()*46, 0, Math.PI*2); q.fill(); }
+          for (let k=0;k<4;k++){ q.fillStyle = P[Math.floor(rand()*P.length)]; q.save(); q.translate(rand()*w, 30 + rand()*110); q.rotate((rand()-.5)*1.4); q.fillRect(-90,-7,180,14); q.restore(); }
+          q.fillStyle = '#111'; q.font = 'italic 900 34px Impact,Arial Black,sans-serif'; q.textAlign = 'center'; q.fillText(mural, w/2, 150); q.fillStyle = '#fff'; q.fillText(mural, w/2 - 2, 147); }
+        else for (const x of [40,152]) for (const y of [26,96]){ q.fillStyle = '#f2efe6'; q.fillRect(x-4,y-4,72,52); q.fillStyle = '#20262e'; q.fillRect(x,y,64,44); }
+        q.fillStyle = '#111'; q.fillRect(0,170,w,22); q.fillStyle = '#fff'; q.font = '800 17px Arial,sans-serif'; q.textAlign = 'center'; q.fillText(name, w/2, 187, w-10);
+        q.fillStyle = '#2a2e34'; q.fillRect(14,196,w-28,60); q.fillStyle = '#ffd9a0'; for (const x of [24,96,168]) q.fillRect(x,204,62,44); }));
+      t.wrapS = t.wrapT = THREE.RepeatWrapping; return std(0xffffff,{map:t, roughness:.85}); };
+    const EL = {portland:GL.wren, brick:NL.redBrick, yellow:NL.stock, glass:NL.glass};
+
+    // ---- the roads ----
+    const LEAD = [[3131,-640],[3625,-748],[3960,-730],[4130,-765],[4470,-905],[4626,-1012],[4993,-1180],[5420,-1385],[5900,-1720]];
+    roadLine(LEAD, 16);                                                                     // Cornhill, Leadenhall Street, Aldgate, Whitechapel High Street and Road
+    const BISH = [[3625,-748],[3700,-1200],[3923,-1658],[3990,-1950],[4011,-2413]];
+    roadLine(BISH, 16);                                                                     // Bishopsgate, Norton Folgate, Shoreditch High Street
+    const COMM = [[4470,-905],[4365,-1420],[3990,-1950]];
+    roadLine(COMM, 14);                                                                     // Commercial Street
+    const BGR = [[3990,-1950],[4498,-2106],[5121,-2234],[5900,-2350]];
+    roadLine(BGR, 14);                                                                      // Bethnal Green Road
+    const BLANE = [[4626,-1012],[4498,-2106]];
+    roadLine(BLANE, 10, TARMAC2);                                                           // Brick Lane
+    roadLine([[3282,-2189],[4011,-2413]], 14);                                              // Old Street
+    roadLine([[3282,-2189],[3684,-2003],[3990,-1950]], 12);                                 // Great Eastern Street
+    roadLine([[4011,-2413],[4060,-3300]], 14); roadLine([[4011,-2413],[4700,-2900]], 14);   // Kingsland Road and Hackney Road
+    roadLine([[4470,-905],[5440,-661],[5900,-560]], 16);                                    // Commercial Road
+
+    // ---- Aldgate: the pump, St Botolph's, Aldgate and Aldgate East stations ----
+    { const g = new THREE.Group(), X = 3975, Z = -747;
+      box(.9,2.6,.9,GL.granite,X,1.3,Z,g); box(1.2,.4,1.2,GL.granite,X,2.8,Z,g); cyl(.1,.1,1.6,6,GL.iron,X,3.8,Z,g); box(.5,.5,.5,std(0xf6e7c0,{emissive:0x6a5a2a}),X,4.8,Z,g);
+      box(.25,.25,.45,GL.bronze,X,1.4,Z+.6,g); bakeGroup(g, 1500); cityCol.push([X-.6,Z-.6,X+.6,Z+.6]);
+      lm('Aldgate Pump', X, 2, Z, 20, "The old parish pump where Leadenhall Street meets Aldgate High Street, the traditional start of the East End."); }
+    station('Aldgate', 'Circle and Metropolitan lines', ...roadside(LEAD[2], LEAD[3], .6, 15), {w:16, mat:NL.redBrick, desc:"Circle and Metropolitan lines, the oldest station on the City's eastern edge."});
+    { const g = new THREE.Group(), X = 4120, Z = -715;                                      // St Botolph without Aldgate (1744): brick nave, stone tower and obelisk spire
+      gbox(g, X, Z, 40, 18, 14, NL.redBrick); box(42,3,20,GL.slate,X,15.5,Z,g); gbox(g, X-24, Z, 9, 9, 26, GL.wren);
+      const sp = new THREE.Mesh(new THREE.ConeGeometry(3.6,18,4), GL.portland); sp.rotation.y = Math.PI/4; sp.position.set(X-24,35,Z); g.add(sp); cyl(.15,.3,2.5,6,goldM,X-24,45,Z,g);
+      bakeGroup(g); keepOut(X-30,Z-11,X+22,Z+11);
+      lm("St Botolph's Aldgate", X, 20, Z, 70, "A Georgian church of 1744 at the gate in the old City wall, its stone spire rising over Aldgate."); }
+    station('Aldgate East', 'District and Hammersmith & City lines', ...roadside(LEAD[4], LEAD[5], .22, -15), {w:16, desc:"District and Hammersmith & City lines, where the City gives way to Whitechapel."});
+    // the Whitechapel Gallery (1901): buff terracotta between two little turrets, over a big round-arched door
+    { const [x, z, yaw] = roadside(LEAD[4], LEAD[5], .72, -14), g = new THREE.Group(), buff = stoneTex('brick','#cfa96e'); g.position.set(x,0,z); g.rotation.y = yaw;
+      ubox(g, 0,11,-10, 30,22,20, buff); for (const sx of [-1,1]){ cyl(2.6,2.6,26,12,buff,sx*13,13,-1.5,g); dome(2.8,1.2,GL.slate,sx*13,26,-1.5,g,12); }
+      const a = new THREE.Mesh(new THREE.PlaneGeometry(7,6), std(0x2a2e34)); a.position.set(0,3,.05); g.add(a); const at = new THREE.Mesh(new THREE.CircleGeometry(3.5,20,0,Math.PI), std(0x2a2e34)); at.position.set(0,6,.05); g.add(at);
+      box(26,1.4,.4,std(0x6f8f5a),0,16,.2,g);                                                // the green frieze of the tree of life
+      bakeGroup(g); solidOBB(x - 10*Math.sin(yaw), z - 10*Math.cos(yaw), 16, 10, yaw);
+      lm('Whitechapel Gallery', x, 12, z, 50, "Charles Harrison Townsend's art gallery of 1901, where Picasso's Guernica was shown in 1938."); }
+    // Altab Ali Park and its Shaheed Minar, the martyrs' monument
+    { const [x, z] = roadside(LEAD[4], LEAD[5], .8, 46); lawn(70,46,x,z,Math.atan2(-(LEAD[5][1]-LEAD[4][1]), LEAD[5][0]-LEAD[4][0]));
+      const g = new THREE.Group(), wh = std(0xf2f2ee); for (const [dx,h,tilt] of [[-4,6,.1],[-1.4,8,0],[1.4,8,0],[4,6,-.1]]){ const f = box(.4,h,.4,wh,x+dx,h/2,z,g); f.rotation.z = tilt; }
+      box(6.5,.4,.4,wh,x,8,z,g); const sun = new THREE.Mesh(new THREE.CircleGeometry(2.2,24), std(0xc4161c,{side:THREE.DoubleSide})); sun.position.set(x,5,z-.3); g.add(sun);
+      bakeGroup(g, 1500); cityCol.push([x-5,z-1,x+5,z+1]);
+      lm('Altab Ali Park', x, 5, z, 60, "A small park named after Altab Ali, killed here in 1978, with a copy of Dhaka's Shaheed Minar, the martyrs' monument."); }
+
+    // ---- Spitalfields: Christ Church, the old market and Brick Lane ----
+    // Christ Church Spitalfields (Hawksmoor, 1729): a great portico on Commercial Street under a 62 m steeple
+    { const g = new THREE.Group(), X = 4410, Z = -1415, S = GL.portland;
+      gbox(g, X+20, Z, 64, 30, 22, GL.wren); box(66,4,32,GL.slate,X+20,24,Z,g);
+      gbox(g, X-14, Z, 12, 12, 36, GL.wren); box(9,8,9,S,X-14,40,Z,g); const sp = new THREE.Mesh(new THREE.ConeGeometry(4.2,18,8), S); sp.position.set(X-14,53,Z); g.add(sp); cyl(.12,.25,2,6,goldM,X-14,63,Z,g);
+      for (const dz of [-6,-2,2,6]) cyl(.9,1,11,12,S,X-22,6.5,Z+dz,g); box(4,1.5,18,S,X-22,12.8,Z,g); box(2,.8,16,S,X-22,.4,Z,g);
+      const ar = new THREE.Mesh(new THREE.TorusGeometry(4,.6,6,16,Math.PI), S); ar.rotation.y = Math.PI/2; ar.position.set(X-22,13.5,Z); g.add(ar);
+      cityCol.push([X-24,Z-8,X-20,Z+8]); bakeGroup(g); keepOut(X-26,Z-17,X+53,Z+17);
+      lm('Christ Church Spitalfields', X, 30, Z, 90, "Nicholas Hawksmoor's church of 1729, its portico and 62-metre steeple towering over Commercial Street."); }
+    // Old Spitalfields Market: the Victorian market hall under its glass roofs
+    { const g = new THREE.Group(), X = 4252, Z = -1440, glassR = std(0x8a9aa6,{metalness:.5,roughness:.35});
+      gbox(g, X, Z, 124, 96, 11, NL.redBrick);
+      for (const dz of [-24,24]){ const r = new THREE.Mesh(new THREE.CylinderGeometry(24,24,124,16,1,true,Math.PI/2,Math.PI), glassR); r.rotation.z = Math.PI/2; r.scale.set(.5,1,1); r.position.set(X,11,Z+dz); g.add(r); }
+      const sign = new THREE.Mesh(new THREE.PlaneGeometry(26,2.4), new THREE.MeshBasicMaterial({map:srgb(canvasTex(512,48,(q,w,h)=>{ q.fillStyle='#1d3a2a'; q.fillRect(0,0,w,h); q.fillStyle='#e8d9a8'; q.font='700 32px Georgia,serif'; q.textAlign='center'; q.fillText('SPITALFIELDS MARKET',w/2,36); }))}));
+      sign.position.set(X+62.1,8.5,Z); sign.rotation.y = Math.PI/2; g.add(sign);
+      bakeGroup(g); keepOut(X-64,Z-50,X+64,Z+50);
+      lm('Spitalfields Market', X, 10, Z, 130, "The Victorian market hall of 1887, now full of food stalls, fashion and antiques under its glass roofs."); }
+    // Brick Lane: curry houses and shops in bright paint, a Bengali street sign, the Banglatown arch, the mosque's minaret
+    // and the old brewery chimney
+    { const names = ['SPICE OF BENGAL','LANE CURRY HOUSE','BAGEL 24','VINTAGE BOX','RAJ GARDEN','SUNDAY MARKET','BRICK LANE BOOKS','GALLERY 9','SWEET CENTRE','DHAKA KITCHEN'];
+      const mats = ['#c4302b','#2f7a5a','#e0a92a','#2a4f9a','#8a2f6a','#d8662a','#1f2a33','#4a8a2a'].map((c,i) => shopTex(c, names[i % names.length]));
+      shopRow(BLANE, 15, mats, {start:30, hMin:9, hMax:14});
+      const [ax, az] = BLANE[0], [bx, bz] = BLANE[1], L = Math.hypot(bx-ax, bz-az), ux = (bx-ax)/L, uz = (bz-az)/L, yaw = Math.atan2(ux, uz);
+      const g = new THREE.Group(), red = std(0xc4161c,{roughness:.5}), green = std(0x00664a,{roughness:.5});
+      { const p = new THREE.Group(); p.position.set(ax + ux*20, 0, az + uz*20); p.rotation.y = yaw; g.add(p);           // the arch over the lane's south end
+        for (const sx of [-1,1]) box(.6,7,.6,sx < 0 ? red : green,sx*6,3.5,0,p); const hoop = new THREE.Mesh(new THREE.TorusGeometry(6,.35,6,24,Math.PI), red); hoop.position.y = 7; p.add(hoop);
+        const hoop2 = new THREE.Mesh(new THREE.TorusGeometry(5,.25,6,24,Math.PI), green); hoop2.position.y = 7; p.add(hoop2); }
+      // the street sign, in English and Bengali
+      const sx = ax + ux*14 + uz*6.5, sz = az + uz*14 - ux*6.5; cyl(.08,.08,2.4,8,GL.iron,sx,1.2,sz,g);
+      const st = new THREE.Mesh(new THREE.PlaneGeometry(1.8,.9), new THREE.MeshBasicMaterial({side:THREE.DoubleSide, map:srgb(canvasTex(256,128,(q,w,h)=>{ q.fillStyle='#f4f2ea'; q.fillRect(0,0,w,h); q.strokeStyle='#111'; q.lineWidth=5; q.strokeRect(4,4,w-8,h-8);
+        q.fillStyle='#111'; q.textAlign='center'; q.font='700 30px Arial,sans-serif'; q.fillText('BRICK LANE',w/2,50); q.font="600 28px 'Nirmala UI','Vrinda','Noto Sans Bengali',sans-serif"; q.fillText('ব্রিক লেন',w/2,96); }))}));
+      st.position.set(sx,2.7,sz); st.rotation.y = yaw + Math.PI/2; g.add(st); cityCol.push([sx-.2,sz-.2,sx+.2,sz+.2]);
+      // the mosque's slender steel minaret (2010), and the brewery's brick chimney
+      { const t = .38, mx = ax + (bx-ax)*t - uz*-24, mz = az + (bz-az)*t + ux*-24; cyl(.6,.9,27,12,std(0xc9ced4,{metalness:.7,roughness:.3}),mx,13.5,mz,g); dome(.9,1.4,goldM,mx,27,mz,g,10); keepOut(mx-2,mz-2,mx+2,mz+2);
+        lm('Brick Lane Mosque', mx, 14, mz, 40, "A Georgian chapel of 1743 that became a synagogue and then a mosque, the story of Brick Lane's people in one building."); }
+      { const t = .62, cx = ax + (bx-ax)*t - uz*28, cz = az + (bz-az)*t + ux*28; cyl(2.2,3,42,12,NL.redBrick,cx,21,cz,g); keepOut(cx-4,cz-4,cx+4,cz+4); }
+      bakeGroup(g, 2400);
+      lm('Brick Lane', ax + (bx-ax)*.5, 6, az + (bz-az)*.5, 200, "The heart of Banglatown: curry houses, bagel shops, vintage clothes and street art, with its signs in English and Bengali."); }
+
+    // ---- Liverpool Street station, on Bishopsgate: a Gothic front with a clock tower, and glass sheds running north ----
+    { const g = new THREE.Group(), X = 3594, Z = -1160, shedM = std(0x8a9aa6,{metalness:.5,roughness:.35});
+      gbox(g, X, Z, 170, 24, 22, NL.pancras); box(172,5,26,GL.slate,X,24.5,Z,g); gbox(g, X+40, Z, 12, 12, 40, NL.pancras);
+      { const c = new THREE.Mesh(new THREE.ConeGeometry(8.5,10,4), GL.slate); c.rotation.y = Math.PI/4; c.position.set(X+40,45,Z); g.add(c);
+        const cl = new THREE.Mesh(new THREE.CircleGeometry(2.6,24), new THREE.MeshBasicMaterial({map:clockTex})); cl.position.set(X+40,34,Z+6.05); g.add(cl); }
+      for (const dx of [-55,0,55]){ const sh = new THREE.Mesh(new THREE.CylinderGeometry(27,27,230,16,1,true,Math.PI/2,Math.PI), shedM); sh.rotation.x = Math.PI/2; sh.scale.set(1,1,.6); sh.position.set(X+dx,8,Z-127); g.add(sh); }
+      cityCol.push([X-83,Z-242,X+83,Z-12]);
+      bakeGroup(g); keepOut(X-86,Z-245,X+86,Z+40); MAP.plazas.push({x:X, z:Z+26, w:170, d:28, rot:0, col:'#6e675a'});
+      lm('Liverpool Street', X, 20, Z, 180, "The Great Eastern Railway's terminus of 1875 on Bishopsgate, its glass and iron sheds among the busiest in London.", {major:true}); }
+    station('Liverpool Street', 'Central, Circle, H&C, Metropolitan · Elizabeth line', 3570, -1147, 0, {noBody:true, desc:"Central, Circle, Hammersmith & City and Metropolitan lines and the Elizabeth line, under one of London's busiest termini."});
+
+    // ---- Shoreditch: the container yard, Shoreditch High Street station, St Leonard's, and murals along the High Street ----
+    // a container yard of shops and food stalls, stacked two high by Shoreditch High Street station
+    { const [x, z, yaw0] = roadside(BGR[0], BGR[1], .1, 26), yaw = yaw0, g = new THREE.Group(); g.position.set(x,0,z); g.rotation.y = yaw;   // local x along the road
+      const cmats = [0x141416,0x141416,0x1f2a33,0xc4302b,0x2f6fd0,0x141416].map(c => std(c,{metalness:.4,roughness:.5}));
+      for (let k=0;k<8;k++) for (const lv of [0,1]) for (const row of [-4,4]) box(12,2.6,2.4,cmats[(k*3 + lv + (row > 0 ? 2 : 0)) % cmats.length],-42 + k*12,1.3 + lv*2.62,row,g);
+      const sign = new THREE.Mesh(new THREE.PlaneGeometry(22,2), new THREE.MeshBasicMaterial({toneMapped:false, map:srgb(canvasTex(512,48,(q,w,h)=>{ q.fillStyle='#141416'; q.fillRect(0,0,w,h); q.fillStyle='#ffffff'; q.font='900 34px Arial,sans-serif'; q.textAlign='center'; q.fillText('SHOREDITCH YARD',w/2,36); }))}));
+      sign.position.set(0,6.6,5.25); g.add(sign);
+      bakeGroup(g, 2400); solidOBB(x, z, 48, 5.4, yaw);
+      lm('Shoreditch Yard', x, 5, z, 90, "Shipping containers stacked two high into a street-food and fashion market, beside Shoreditch High Street station."); }
+    station('Shoreditch High Street', 'London Overground', ...roadside(BGR[0], BGR[1], .3, 15), {w:22, d:10, h:7, mat:GL.concrete, desc:"London Overground, on the old Bishopsgate goods yard viaduct at the heart of Shoreditch."});
+    // St Leonard's, Shoreditch (1740): "When I grow rich, say the bells of Shoreditch"
+    { const g = new THREE.Group(), X = 4062, Z = -2380, S = GL.portland;
+      gbox(g, X+12, Z, 46, 26, 16, GL.wren); box(48,3.5,28,GL.slate,X+12,17.7,Z,g);
+      gbox(g, X-16, Z, 10, 10, 30, GL.wren); box(7.5,8,7.5,S,X-16,34,Z,g); const sp = new THREE.Mesh(new THREE.ConeGeometry(3.2,17,8), S); sp.position.set(X-16,46.5,Z); g.add(sp); cyl(.12,.25,2,6,goldM,X-16,56,Z,g);
+      for (const dz of [-4.5,-1.5,1.5,4.5]) cyl(.75,.8,9,12,S,X-23,4.5,Z+dz,g); prism(13,3,3,S,X-23,9,Z,g,Math.PI/2); cityCol.push([X-24.5,Z-6,X-21.5,Z+6]);
+      bakeGroup(g); keepOut(X-26,Z-14,X+36,Z+14);
+      lm("St Leonard's Shoreditch", X, 25, Z, 70, "George Dance's church of 1740: \"When I grow rich, say the bells of Shoreditch\" in the old nursery rhyme."); }
+
+    // the murals and shopfronts
+    { const tags = ['EAST','LDN','E1','TOMMY WAS HERE','SHOREDITCH','NO KINGS','HOXTON','BIG UP'];
+      const mats = ['#7a3a2a','#5a2e24','#8a4a38','#3a3d45'].flatMap((c,i) => [shopTex(c, ['COLD BREW','SNEAKER LAB','RECORD ROOM','TACO SHACK','PRINT SHOP','DESIGN STUDIO','VINYL CAFE','BARBER 1'][i*2], tags[i*2]), shopTex(c, ['COLD BREW','SNEAKER LAB','RECORD ROOM','TACO SHACK','PRINT SHOP','DESIGN STUDIO','VINYL CAFE','BARBER 1'][i*2+1], tags[i*2+1])]);
+      shopRow([BISH[2], BISH[3], BISH[4]], 18, mats, {hMin:12, hMax:18});
+      shopRow([BGR[0], BGR[1]], 17, mats, {start:90, hMin:11, hMax:16}); }
+    // ---- Whitechapel: the market, the East London Mosque, Whitechapel station and the Royal London Hospital ----
+    // the street market's stalls along the north pavement of Whitechapel Road
+    { const g = new THREE.Group(), cloth = [0xc4302b,0x2f7a5a,0x2a4f9a,0xe0a92a,0xf2f2ee].map(c => std(c,{roughness:.9})), frame = GL.iron;
+      const [a, b] = [LEAD[6], LEAD[7]], dx = b[0]-a[0], dz = b[1]-a[1], L = Math.hypot(dx,dz), ux = dx/L, uz = dz/L, yaw = Math.atan2(-uz, ux);
+      for (let s=30, k=0; s<L*.7; s+=5.5, k++){ const cx = a[0] + ux*s + uz*11.6, cz = a[1] + uz*s - ux*11.6, p = new THREE.Group(); p.position.set(cx,0,cz); p.rotation.y = yaw; g.add(p);
+        box(4.6,.9,2.2,std(0x8a6a44),0,.9,0,p); for (const [px,pz] of [[-2.2,-1],[2.2,-1],[-2.2,1],[2.2,1]]) box(.08,2.4,.08,frame,px,1.2,pz,p);
+        const roof = box(4.9,.12,2.7,cloth[k % cloth.length],0,2.45,0,p); roof.rotation.x = .14; obbs.push([cx,cz,2.4,1.2,Math.cos(yaw),Math.sin(yaw)]); }
+      bakeGroup(g, 1200);
+      lm('Whitechapel Market', a[0] + ux*L*.35, 3, a[1] + uz*L*.35, 120, "A street market along Whitechapel Road since the 1600s: fruit, veg, fabric and phone cases from the stalls."); }
+    // the East London Mosque (1985): red brick under a golden dome, with a tall minaret
+    { const g = new THREE.Group(), X = 5000, Z = -1147;
+      gbox(g, X, Z, 50, 35, 16, NL.redBrick); cyl(9,9,4,24,NL.redBrick,X,18,Z,g); dome(9,1.1,goldM,X,20,Z,g,24); cyl(.15,.3,3,6,goldM,X,31,Z,g);
+      cyl(1.8,2.1,40,12,NL.redBrick,X+22,20,Z-14,g); cyl(2.6,2.6,1,12,GL.white,X+22,34,Z-14,g); dome(1.9,2,goldM,X+22,40,Z-14,g,12);
+      bakeGroup(g); keepOut(X-26,Z-19,X+27,Z+19);
+      lm('East London Mosque', X, 20, Z, 80, "One of Britain's largest mosques, on Whitechapel Road since 1985, its golden dome and minaret over the market."); }
+    station('Whitechapel', 'District, H&C, Overground · Elizabeth line', ...roadside(LEAD[6], LEAD[7], .82, -16), {w:30, d:10, mat:NL.glass, desc:"District, Hammersmith & City and Overground lines, and the Elizabeth line under its long new canopy."});
+    // the Royal London Hospital: its Victorian front on Whitechapel Road, and the blue glass towers of 2012 behind
+    { const [x, z, yaw0] = roadside(LEAD[7], LEAD[8], .22, 30), yaw = yaw0 + Math.PI, g = new THREE.Group(), blue = facadeOf('#3d6fa8','#2f5f9a','#22303f',true);
+      g.position.set(x,0,z); g.rotation.y = yaw;                                                // local -z faces the road
+      ubox(g, 0,10,0, 120,20,24, PORTLAND); box(122,2,26,GL.slate,0,21,0,g); for (const dx of [-30,30]) ubox(g, dx,38,44, 46,76,34, blue);
+      bakeGroup(g); solidOBB(x, z, 60, 12, yaw); for (const dx of [-30,30]){ const wx = x + dx*Math.cos(yaw) + 44*Math.sin(yaw), wz = z - dx*Math.sin(yaw) + 44*Math.cos(yaw); solidOBB(wx, wz, 23, 17, yaw); }
+      lm('Royal London Hospital', x, 30, z, 160, "East London's great hospital, founded in 1740, home of the capital's air ambulance on its blue glass towers.", {major:true}); }
+
     // exclusion zones for the street grid: parks, squares, landmarks, the river
     const rects = [[-100,-105,115,65],[-140,140,-5,360],[-1475,-260,-900,300],[-1440,330,-990,830],[-1050,340,-900,480],[20,870,215,1020],[200,940,330,1300],[-70,1040,170,1135],[160,345,240,420],[170,820,330,945], ...zones];
     const SJa = [Math.cos(PARK_SJ.rot)*380, -Math.sin(PARK_SJ.rot)*380];   // St James's Park's long axis
@@ -2765,14 +2929,14 @@ function buildScene(){
       || segDist(x,z,15,40,60,900) < 66 + r;                                     // the Whitehall frontage
     const mains = roads.slice(), nearMain = (x,z,r) => mains.some(rd => segDist(x,z,rd.x1,rd.z1,rd.x2,rd.z2) < rd.w/2 + 6 + r);
     // an even 100 m street grid: 10 m side streets, buildings set back behind 5 m pavements
-    const G = 100, X0 = -2400, Z0 = -4300, NX = 73, NZ = 62;   // Hyde Park to the Tower, Camden and Islington down to Pimlico
+    const G = 100, X0 = -2400, Z0 = -4300, NX = 83, NZ = 62;   // Hyde Park to Whitechapel, Camden and Islington down to Pimlico
     for (let i=0; i<=NX; i++) for (let j=0; j<NZ; j++){ const x = X0 + i*G, z1 = Z0 + j*G, z2 = z1 + G; if (!inZone(x,(z1+z2)/2,4) && !nearMain(x,(z1+z2)/2,-20)) road(x,z1,x,z2,10,TARMAC2,.05); }
     for (let j=0; j<=NZ; j++) for (let i=0; i<NX; i++){ const z = Z0 + j*G, x1 = X0 + i*G, x2 = x1 + G; if (!inZone((x1+x2)/2,z,4) && !nearMain((x1+x2)/2,z,-20)) road(x1,z,x2,z,10,TARMAC2,.062); }
     // blocks: one even mansion block per cell, or four smaller ones where a main road cuts the corner
     // districts: the South Bank, Belgravia's white stucco, Camden and Islington's brick and stucco, the King's Cross offices,
     // the City's glass and stone, Fleet Street, Victoria Street's offices, Bloomsbury, Mayfair and Soho's brick, St James's and Westminster
     const district = (x,z) => RIVER.side(x,z) < 0 ? [GLASS, CREAM] : x < -1465 && z > 330 ? [STUCCO, STUCCO] : z < -3000 || (z < -2700 && x > 1300) ? [BRICK, STUCCO]
-      : z < -2700 && x > 0 ? [GLASS2, BRICK] : x > 2900 ? [GLASS2, GLASS] : x > 1600 ? [PORTLAND, GLASS2]
+      : z < -2700 && x > 0 ? [GLASS2, BRICK] : x > 4300 ? [BRICK, CREAM] : x > 3300 && z < -1300 ? [BRICK, GLASS2] : x > 2900 ? [GLASS2, GLASS] : x > 1600 ? [PORTLAND, GLASS2]
       : x > 600 && z < 0 ? [PORTLAND, CREAM] : z > 1050 && x < 0 ? [GLASS2, PORTLAND] : z < -60 ? [BRICK, CREAM] : x < -150 ? [CREAM, PORTLAND] : [PORTLAND, PORTLAND];
     const roofMat = std(0x5c5f66,{roughness:.8});
     // blocks are merged into a few meshes per 500 m chunk; each still collides and gets its trims
@@ -3323,7 +3487,7 @@ function buildScene(){
       return colIdx; };
     // the minimap draws the buildings round Tommy from the same buckets
     MAP.colsIn = (x0,z0,x1,z1) => { const out = new Set(), idx = colIndex(); for (let i=Math.floor(x0/COLB); i<=Math.floor(x1/COLB); i++) for (let j=Math.floor(z0/COLB); j<=Math.floor(z1/COLB); j++) for (const c of idx.get(i*100003+j) || []) out.add(c); return out; };
-    const hitsStatic = (x,z,r) => { if (x < -2400 || x > 4900 || z < -4350 || z > 1900 || (RIVER.inside(x,z,6+r) && !onBridge(x,z))) return true;
+    const hitsStatic = (x,z,r) => { if (x < -2400 || x > 5900 || z < -4350 || z > 1900 || (RIVER.inside(x,z,6+r) && !onBridge(x,z))) return true;
       const near = colIndex().get(Math.floor(x/COLB)*100003 + Math.floor(z/COLB)); if (!near) return false;
       for (const c of near){
         if (c.length === 4){ if (x > c[0]-r && x < c[2]+r && z > c[1]-r && z < c[3]+r) return true; }
@@ -3447,7 +3611,7 @@ function buildScene(){
         else { a.dir = -a.dir; a.s = a.dir > 0 ? 0 : r.len; }
         a.off = offFor(a, roads[a.ri]);
       }
-      const holder = new THREE.Group(); fsc.add(holder);
+      const holder = new THREE.Group(); holder.userData.dynamic = true; fsc.add(holder);
       const mixes = [car,car,car,car,cab,cab,bus];
       for (let i=0;i<64;i++){ const m = mixes[i % mixes.length](); m.kind = 'car'; cars.push(m); holder.add(m.g); }
       for (let i=0;i<100;i++){ const m = person(); m.kind = 'ped'; peds.push(m); holder.add(m.g); }
@@ -3560,6 +3724,12 @@ function buildScene(){
       if (m.isMeshStandardMaterial) m.envMapIntensity = m.metalnessMap ? .6 : m.metalness >= .5 ? 1 : .45;
       const flatGeo = /^(Plane|Circle|Shape)/.test(o.geometry.type);
       o.castShadow = o.userData.cast || (!flatGeo && !m.transparent && !o.userData.noCast); });
+    // everything else that stands still (the older landmarks, Downing Street's railings, the guards) is culled by distance
+    // too, so it isn't drawn from across the map; things the game shows and hides itself are left alone
+    { const skip = new Set([skyDome, ph, rainLines, snowPts, tommy.root, shadow, ...servants.map(f => f.root), ...cullables.map(c => c.o)]), bb = new THREE.Box3(), sp = new THREE.Sphere();
+      for (const o of fsc.children){ if (skip.has(o) || o.isLight || o.userData.dynamic || o.frustumCulled === false) continue;
+        bb.setFromObject(o); if (bb.isEmpty()) continue; bb.getBoundingSphere(sp); if (sp.radius > 1500) continue;
+        cullables.push({o, x:sp.center.x, z:sp.center.z, r:sp.radius + 10, far:1e9, need:null}); } }
 
     return {
       scene: fsc,
@@ -4104,7 +4274,8 @@ function freeScope(lm){
 }
 // minimap: a dark street map in the open-world style, north up. Markers are colour-coded by kind (government purple,
 // sights gold, the Eye teal, the Tube as a roundel); a light cone shows where the camera is looking.
-const BLIP = {'Staple Inn':'SI','Euston Tower':'ET','St Pancras':'PN',"King's Cross":'KX','Islington Green':'IG','Business Design Centre':'BD','Finsbury Square':'FS',
+const BLIP = {'Aldgate Pump':'AP',"St Botolph's Aldgate":'SB','Whitechapel Gallery':'WG','Altab Ali Park':'AA','Christ Church Spitalfields':'CC','Spitalfields Market':'SM',
+  'Brick Lane Mosque':'BM','Brick Lane':'BL','Liverpool Street':'LV','Shoreditch Yard':'SY',"St Leonard's Shoreditch":'SL','Whitechapel Market':'WM','East London Mosque':'EM','Royal London Hospital':'RL','Staple Inn':'SI','Euston Tower':'ET','St Pancras':'PN',"King's Cross":'KX','Islington Green':'IG','Business Design Centre':'BD','Finsbury Square':'FS',
   'Camden Lock':'CL',"Regent's Park":'RP','The Admiralty':'AD','Old Admiralty Building':'OA',"St Paul's Cathedral":'SP','Tower of London':'TL','Tower Bridge':'TB','The Shard':'SH','The Gherkin':'G','The Walkie-Talkie':'WT','The Monument':'M','Tate Modern':'TM',
   'Millennium Bridge':'MB',"Cleopatra's Needle":'CN','Westminster Cathedral':'WC','Wellington Arch':'AR','Marble Arch':'MA','Hyde Park':'HY','Belgrave Square':'BS','Piccadilly Circus':'PI','Leicester Square':'LS','Chinatown':'CT','Soho Square':'SS','Carnaby Street':'CS','Centre Point':'CP','Portcullis House':'PC','Westminster Station':'U','10 Downing Street':'10','Cabinet Office':'CO','Big Ben':'BB','Houses of Parliament':'HP','Westminster Abbey':'WA','The Cenotaph':'C','Trafalgar Square':'TS','Buckingham Palace':'BP','London Eye':'LE'};
 const BLIP_KIND = {'The Admiralty':'gov','Old Admiralty Building':'gov','10 Downing Street':'gov','Cabinet Office':'gov','Houses of Parliament':'gov','Portcullis House':'gov','Westminster Station':'tube','London Eye':'eye'};
@@ -4179,7 +4350,7 @@ async function roamInteract(){
   const lvl = api.travel();
   $('roam').querySelector('.objective b').textContent = lvl === 'street' ? 'Central London' : "Tommy's apartment complex";
   $('objText').textContent = lvl === 'street'
-    ? 'Explore London on foot, from Camden and Islington to Belgravia, St Paul\'s and the Tower. The lift back up is at the tower door.'
+    ? 'Explore London on foot, from Camden and Islington to Belgravia, St Paul\'s, the Tower and Whitechapel. The lift back up is at the tower door.'
     : 'Back home. The telescope on the terrace looks out over London.';
   await new Promise(r => setTimeout(r, 400));
   await fadeTo(false);
