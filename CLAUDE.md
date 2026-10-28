@@ -7,6 +7,7 @@ A game starring Tommy (no last name), set in Westminster, London.
 - `wearChar(rig, name)` in `buildScene` loads `assets/<name>-glb.txt` (base64; artifacts won't serve .glb), toon-shades it, scales it to the toon rig's height, and swaps the rig's body, torso, arms, legs and head for the model's pivots. So `idle()` and the walk animate it unchanged.
   - Props on the old head and arms (`userData.prop`: the seasonal hats and the sparkler) move across to the model.
   - The toon rigs from `buildTommy()` / `figure()` show until the files load, or if they fail.
+  - On the menu, `menuPose()` gives Tommy's model a stance once it's on: feet apart, weight on one leg, hands in his pockets (the hands are shrunk away, since the arms have no elbows), chin up and head cocked. On Bonfire Night his right arm stays out with the sparkler.
 - If either model changes, copy it in again and regenerate its `-glb.txt` with `[Convert]::ToBase64String`. Publish with `assets/tommy-toon-glb.txt` and `assets/stephen-marsh-glb.txt` in `files`; the itch build includes them.
 
 **The rigged Tripo model is off** (`USE_GLB = false`). Setting `USE_GLB = true` brings back **the user's model `assets/tommy.glb`**: "tommy model 2.glb" from `Documents\Tommy - The GTA Game`, a Tripo export. It's loaded with GLTFLoader and SkeletonUtils (three r128 examples/js from jsdelivr) and attached by `attachGLB(rig)`.

@@ -1344,6 +1344,22 @@ function buildScene(){
     bunnyEars.visible = false; }
   santaHat.userData.prop = witchHat.userData.prop = bunnyEars.userData.prop = true;
   wearChar(tommyRig, 'tommy-toon');
+  /* the menu stance, once his own model is on: feet apart, weight on one leg, hands in his pockets, chin up and head cocked.
+     The model's arms are straight with no elbows, and the hands already hang level with his shorts, so they just tuck in.
+     On Bonfire Night the right arm stays out, holding the sparkler. */
+  function menuPose(r, t){
+    if (r.char !== 'tommy-toon') return;
+    r.posed = true;
+    const sway = Math.sin(t*.45)*.012, out = season === 'bonfire';
+    r.legs[0].rotation.z = -.08; r.legs[1].rotation.z = .12;
+    r.body.rotation.z = .025 + sway; r.body.rotation.y = .06;
+    r.arms.forEach((a,i) => {
+      const hand = a.hand || (a.hand = a.children.find(c => /Hand$/.test(c.name)) || new THREE.Object3D());
+      if (i === 1 && out){ a.rotation.z = 0; hand.scale.setScalar(1); return; }
+      a.rotation.z = i ? -.15 : .15; a.rotation.x = -.04;
+      hand.scale.setScalar(.01); });   // the hand goes into the pocket
+    r.head.rotation.x = -.07 + Math.sin(t*.6)*.02; r.head.rotation.z = .07;
+  }
   function setSeason(sz){
     season = sz; xmas.visible = santaHat.visible = sz === 'christmas'; hallow.visible = witchHat.visible = sz === 'halloween';
     easter.visible = bunnyEars.visible = sz === 'easter'; bonfire.visible = fire.stick.visible = sz === 'bonfire';
@@ -3071,6 +3087,7 @@ function buildScene(){
       v.tail.position.set(v.g.position.x, 4.9, zz - v.dir*v.len);
     }
     idle(tommyRig, t, dt, [-.42,-.42,.12,.32]); if (tommyRig.glb) glbAnimate(tommyRig.glb, t, dt, 0, false, [-.42,-.42,.12,.32]);
+    menuPose(tommyRig, t);
     lampLight.intensity = (1.7 + Math.sin(t*9)*.04)*atmCur.lights;
 
     renderer.render(scene, camera);
