@@ -1916,18 +1916,28 @@ function buildScene(){
       const poly = [...pts.map((_,i) => off(i, RIV_W)), ...pts.map((_,i) => off(i, -RIV_W)).reverse()];
       return {pts, tan, N, off, offAt, dist, side, at, poly, inside:(x,z,pad=0) => nearest(x,z)[1] < RIV_W + pad};
     })();
-    { const sh = new THREE.Shape([[-3600,-2700],[6600,-2700],[6600,3500],[-3600,3500]].map(([x,z]) => new THREE.Vector2(x,-z)));
-      sh.holes.push(new THREE.Path(RIVER.poly.map(([x,z]) => new THREE.Vector2(x,-z))));
+    // the Regent's Canal through Camden Lock: 16 m wide, its water 2 m down between brick walls
+    const CANAL = [[-1800,-3990],[-1400,-4040],[-1101,-4062],[-800,-4030],[-500,-3960]], CAN_W = 8;
+    const canalSide = sd => CANAL.map((p,i) => { const a = CANAL[Math.max(0,i-1)], b = CANAL[Math.min(CANAL.length-1,i+1)], dx = b[0]-a[0], dz = b[1]-a[1], l = Math.hypot(dx,dz); return [p[0] + sd*dz/l*CAN_W, p[1] - sd*dx/l*CAN_W]; });
+    const canalPoly = [...canalSide(1), ...canalSide(-1).reverse()];
+    const nearCanal = (x,z,pad=0) => CANAL.some((p,i) => i && segDist(x,z,CANAL[i-1][0],CANAL[i-1][1],p[0],p[1]) < CAN_W + pad);
+    { const sh = new THREE.Shape([[-3600,-4800],[6600,-4800],[6600,3500],[-3600,3500]].map(([x,z]) => new THREE.Vector2(x,-z)));
+      sh.holes.push(new THREE.Path(RIVER.poly.map(([x,z]) => new THREE.Vector2(x,-z))), new THREE.Path(canalPoly.map(([x,z]) => new THREE.Vector2(x,-z))));
       const gnd = new THREE.Mesh(new THREE.ShapeGeometry(sh), std(0xffffff,{map:slabTex,roughness:.95})); wetMats.push(gnd.material); gnd.rotation.x = -Math.PI/2; fsc.add(gnd);
       const m = new THREE.Mesh(new THREE.ShapeGeometry(new THREE.Shape(RIVER.poly.map(([x,z]) => new THREE.Vector2(x,-z)))), water); m.rotation.x = -Math.PI/2; m.position.y = WATER_Y; fsc.add(m);
       // the granite river walls down to the water, on both banks
       const wallG = mgrp(std(0x8f897d,{roughness:.9}), 0, 0, 1e5);
       for (const sd of [1,-1]) for (let i=0;i<RIVER.N-1;i++){ const a = RIVER.off(i, sd*RIV_W), b = RIVER.off(i+1, sd*RIV_W), t = RIVER.tan[i], L = Math.hypot(b[0]-a[0], b[1]-a[1])/6;
-        quad(wallG, [a[0],WATER_Y-1.5,a[1]], [b[0],WATER_Y-1.5,b[1]], [b[0],0,b[1]], [a[0],0,a[1]], [-sd*t[1], 0, sd*t[0]], [0,0, L,0, L,1, 0,1]); } }
+        quad(wallG, [a[0],WATER_Y-1.5,a[1]], [b[0],WATER_Y-1.5,b[1]], [b[0],0,b[1]], [a[0],0,a[1]], [-sd*t[1], 0, sd*t[0]], [0,0, L,0, L,1, 0,1]); }
+      const cw = new THREE.Mesh(new THREE.ShapeGeometry(new THREE.Shape(canalPoly.map(([x,z]) => new THREE.Vector2(x,-z)))), water); cw.rotation.x = -Math.PI/2; cw.position.y = -2; fsc.add(cw);
+      const brickW = mgrp(std(0x7a4a3a,{roughness:.9}), 0, -4000, 1e5);
+      for (const sd of [1,-1]){ const e = canalSide(sd); for (let i=1;i<e.length;i++){ const a = e[i-1], b = e[i], dx = b[0]-a[0], dz = b[1]-a[1], l = Math.hypot(dx,dz);
+        quad(brickW, [a[0],-3,a[1]], [b[0],-3,b[1]], [b[0],0,b[1]], [a[0],0,a[1]], [-sd*dz/l, 0, sd*dx/l], [0,0, l/6,0, l/6,1, 0,1]); } } }
     // parks: grass laid with world-scaled UVs so the texture keeps its size
     // what the minimap draws besides buildings and roads: parks, squares and the lake
     const MAP = {greens:[], plazas:[], lakes:[{x:-522, z:433, rx:260, ry:40, rot:-.37}]};
-    const lawn = (w,d,x,z,rot=0) => { MAP.greens.push({x,z,w,d,rot}); const m = flat(w,d,grass,x,z,.03,rot); const uv = m.geometry.attributes.uv; for (let i=0;i<uv.count;i++) uv.setXY(i, uv.getX(i)*w, uv.getY(i)*d); return m; };
+    // (the street grid keeps off every lawn)
+    const lawn = (w,d,x,z,rot=0) => { MAP.greens.push({x,z,w,d,rot}); const ex = (w*Math.abs(Math.cos(rot)) + d*Math.abs(Math.sin(rot)))/2, ez = (w*Math.abs(Math.sin(rot)) + d*Math.abs(Math.cos(rot)))/2; zones.push([x-ex,z-ez,x+ex,z+ez]); const m = flat(w,d,grass,x,z,.03,rot); const uv = m.geometry.attributes.uv; for (let i=0;i<uv.count;i++) uv.setXY(i, uv.getX(i)*w, uv.getY(i)*d); return m; };
     const PARK_SJ = {x:-555, z:445, w:760, d:330, rot:.363};   // parallel to The Mall, on its south side
     lawn(PARK_SJ.w,PARK_SJ.d,PARK_SJ.x,PARK_SJ.z,PARK_SJ.rot);                  // St James's Park
     { const lake = new THREE.Mesh(new THREE.CircleGeometry(1,48), water); lake.scale.set(260,40,1); lake.rotation.set(-Math.PI/2,0,.37); lake.position.set(-522,.06,433); fsc.add(lake);
@@ -1961,7 +1971,7 @@ function buildScene(){
     for (let z=70; z<880; z+=70){
       const xw = 15 + (z-40)*45/860;
       // a continuous, even Portland-stone frontage on both sides of Whitehall
-      if (!(z > 200 && z < 330) && !(z > 330 && z < 480)) building(xw-40, z+32, 46, 64, 26, PORTLAND);   // gaps for Horse Guards, the Cabinet Office and Downing Street
+      if (z !== 70 && !(z > 200 && z < 330) && !(z > 330 && z < 480)) building(xw-40, z+32, 46, 64, 26, PORTLAND);   // gaps for the Admiralty, Horse Guards, the Cabinet Office and Downing Street
       if (z < 480 || z > 560) building(xw+40, z+32, 46, 64, 26, z % 140 ? PORTLAND : CREAM);
     }
     { const hx = -20, hz = 260; building(hx-10, hz, 40, 70, 16, PORTLAND); fb(8,14,8,stone,hx-10,23,hz); const cup = new THREE.Mesh(new THREE.ConeGeometry(5,7,4), std(0x5a6a62)); cup.rotation.y=Math.PI/4; cup.position.set(hx-10,33.5,hz); fsc.add(cup); }
@@ -2208,7 +2218,10 @@ function buildScene(){
     const stoneTex = (kind, base) => { const t = srgb(canvasTex(256,256,(q,w,h)=>{ q.fillStyle = base; q.fillRect(0,0,w,h);
         for (let i=0;i<1800;i++){ q.fillStyle = rand() < .5 ? 'rgba(0,0,0,.035)' : 'rgba(255,255,255,.05)'; q.fillRect(rand()*w, rand()*h, 3, 2); }
         q.fillStyle = 'rgba(0,0,0,.07)'; for (let y=0;y<h;y+=kind === 'wren' ? 11 : 16) q.fillRect(0,y,w,1);
-        if (kind === 'wren'){ q.fillStyle = 'rgba(255,255,255,.22)'; q.fillRect(0,124,w,8); q.fillRect(0,4,w,6);
+        if (kind === 'brick' || kind === 'banded'){ q.fillStyle = 'rgba(0,0,0,.12)'; for (let y=0;y<h;y+=5){ q.fillRect(0,y,w,1); for (let x=(y/5%2)*10;x<w;x+=20) q.fillRect(x,y,1,5); }
+          if (kind === 'banded'){ q.fillStyle = '#ece6d8'; for (let y=0;y<h;y+=64) q.fillRect(0,y,w,10); }
+          for (const x of [32,96,160,224]) for (const y of [22,86,150,214]){ q.fillStyle = kind === 'banded' ? '#ece6d8' : 'rgba(255,255,255,.28)'; q.fillRect(x-13,y-4,26,40); q.fillStyle = '#2c333b'; q.fillRect(x-9,y,18,32); } }
+        else if (kind === 'wren'){ q.fillStyle = 'rgba(255,255,255,.22)'; q.fillRect(0,124,w,8); q.fillRect(0,4,w,6);
           for (const x of [0,128]){ for (const dx of [6,26]){ q.fillStyle='rgba(0,0,0,.1)'; q.fillRect(x+dx,0,12,h); q.fillStyle='rgba(255,255,255,.16)'; q.fillRect(x+dx+2,0,4,h); } }
           q.fillStyle = '#3a4048'; for (const x of [70,198]){ q.fillRect(x-14,158,28,64); q.beginPath(); q.arc(x,158,14,Math.PI,0); q.fill(); q.fillRect(x-12,40,24,50); q.beginPath(); q.arc(x,40,12,Math.PI,0); q.fill(); } }
         else { q.fillStyle = '#323840'; for (const x of [32,96,160,224]) for (const y of [36,150]){ q.fillRect(x-7,y,14,60); q.beginPath(); q.moveTo(x-7,y); q.lineTo(x,y-14); q.lineTo(x+7,y); q.fill(); }
@@ -2570,27 +2583,196 @@ function buildScene(){
       for (let a=x-w/2+12; a<x+w/2-6; a+=24) for (let b=z-d/2+12; b<z+d/2-6; b+=24) extraTrees.push([a + (rand()-.5)*6, b + (rand()-.5)*6, .9]); }
     lm('Belgrave Square', -1850, 8, 700, 150, "The grandest of Belgravia's garden squares, ringed by white stucco terraces of the 1820s and 30s, many of them embassies now.");
     const inPoly = (P, x, z) => { let c = false; for (let i=0, j=P.length-1; i<P.length; j=i++){ const [xi,zi] = P[i], [xj,zj] = P[j]; if ((zi > z) !== (zj > z) && x < (xj-xi)*(z-zi)/(zj-zi) + xi) c = !c; } return c; };
-    const inHyde = (x,z,r=0) => [[0,0],[r,0],[-r,0],[0,r],[0,-r]].some(([a,b]) => inPoly(HYDE, x+a, z+b));
+    const inPolyR = (P,x,z,r=0) => [[0,0],[r,0],[-r,0],[0,r],[0,-r]].some(([a,b]) => inPoly(P, x+a, z+b)), inHyde = (x,z,r=0) => inPolyR(HYDE,x,z,r);
     // the Shard, at London Bridge on the South Bank
     { const sh = new THREE.Mesh(new THREE.ConeGeometry(30,310,4), std(0x9fb4c8,{metalness:.6,roughness:.2})); sh.position.set(3330,155,500); sh.rotation.y = .3; fsc.add(sh); cull(sh);
       cityCol.push([3305,475,3355,525]); keepOut(3290,460,3370,540);
       lm('The Shard', 3330, 150, 500, 330, "At 310 metres the tallest building in the United Kingdom, beside London Bridge station.", {major:true}); }
 
+    /* ================= North London: Tottenham Court Road, Holborn, Euston, King's Cross St Pancras, Camden, the Angel, Islington, Finsbury and Moorgate ================= */
+    // Placed from St Giles Circus (where Charing Cross Road meets Oxford Street) at about 1.15 times the real distances.
+    // a box turned by yaw (local x along c, s like the groups), merged into g: four walls and a top, the texture at 12 m
+    const rbox = (g, cx, cz, w, d, h, yaw) => { const c = Math.cos(yaw), s = Math.sin(yaw), W = (lx,lz,y) => [cx + lx*c + lz*s, y, cz - lx*s + lz*c], U = w/12, D = d/12, V = h/12;
+      quad(g, W(-w/2,d/2,0), W(w/2,d/2,0), W(w/2,d/2,h), W(-w/2,d/2,h), [s,0,c], [0,0, U,0, U,V, 0,V]);
+      quad(g, W(w/2,-d/2,0), W(-w/2,-d/2,0), W(-w/2,-d/2,h), W(w/2,-d/2,h), [-s,0,-c], [0,0, U,0, U,V, 0,V]);
+      quad(g, W(w/2,d/2,0), W(w/2,-d/2,0), W(w/2,-d/2,h), W(w/2,d/2,h), [c,0,-s], [0,0, D,0, D,V, 0,V]);
+      quad(g, W(-w/2,-d/2,0), W(-w/2,d/2,0), W(-w/2,d/2,h), W(-w/2,-d/2,h), [-c,0,s], [0,0, D,0, D,V, 0,V]);
+      quad(g, W(-w/2,d/2,h), W(w/2,d/2,h), W(w/2,-d/2,h), W(-w/2,-d/2,h), [0,1,0], [0,0, U,0, U,D, 0,D]); };
+    // a point beside the road from a to b, t of the way along, `off` metres to its side (+ is the left of a→b), and the yaw facing the road
+    const roadside = (a, b, t, off) => { const dx = b[0]-a[0], dz = b[1]-a[1], l = Math.hypot(dx,dz), px = -dz/l, pz = dx/l, sg = Math.sign(off);
+      return [a[0] + dx*t + px*off, a[1] + dz*t + pz*off, Math.atan2(-px*sg, -pz*sg)]; };
+    const NL = {glass:std(0x3c4a56,{metalness:.6,roughness:.2}), stock:stoneTex('brick','#c4a56e'), pancras:stoneTex('gothic','#9b4b3b'), banded:stoneTex('banded','#9a4634'),
+      redBrick:stoneTex('brick','#8a4a38'), oxblood:std(0x7a1f1a,{roughness:.35,metalness:.1})};
+    floodMats.push([NL.pancras,.3], [NL.stock,.25]);
+
+    // ---- Tottenham Court Road, High Holborn, Holborn and Kingsway ----
+    const TCR = [[0,-1000],[-327,-1537],[-630,-2074]], HOL = [[400,-1000],[838,-1141],[1516,-1217],[1820,-1192],[2171,-1026],[SPC.x-128,-765]];
+    roadLine(TCR, 16);                                                                      // Tottenham Court Road
+    roadLine(HOL, 16);                                                                      // High Holborn, Holborn, Holborn Viaduct, Newgate Street
+    roadLine([[838,-1141],[1000,-420]], 16);                                                // Kingsway, down to Aldwych
+    station('Tottenham Court Road', 'Central, Northern and Elizabeth lines', -40, -1012, 0, {w:18, mat:NL.glass, desc:"Central, Northern and Elizabeth lines, beneath St Giles Circus at the top of Charing Cross Road."});
+    station('Goodge Street', 'Northern line', ...roadside(TCR[0], TCR[1], .97, -15), {w:12, mat:NL.oxblood, desc:"Northern line, halfway up Tottenham Court Road."});
+    station('Warren Street', 'Northern and Victoria lines', ...roadside(TCR[1], TCR[2], .9, -15), {w:12, mat:NL.oxblood, desc:"Northern and Victoria lines, where Tottenham Court Road meets Euston Road."});
+    station('Holborn', 'Central and Piccadilly lines', ...roadside(HOL[1], HOL[2], .06, 15), {w:18, mat:NL.oxblood, desc:"Central and Piccadilly lines, on the corner of High Holborn and Kingsway."});
+    // Staple Inn (1586): a timber-framed Tudor frontage at Holborn Bars, one of the few to survive the Great Fire
+    { const [x, z, yaw] = roadside(HOL[1], HOL[2], .96, 22), g = new THREE.Group(); g.position.set(x,0,z); g.rotation.y = yaw;
+      const timber = srgb(canvasTex(256,256,(q,w,h)=>{ q.fillStyle='#efe6d2'; q.fillRect(0,0,w,h); q.fillStyle='#2b1d14';
+        for (let x=0;x<w;x+=32) q.fillRect(x,0,8,h); for (const y of [0,62,124,186,248]) q.fillRect(0,y,w,8);
+        q.lineWidth = 6; q.strokeStyle = '#2b1d14'; for (let x=0;x<w;x+=64){ q.beginPath(); q.moveTo(x+8,70); q.lineTo(x+32,124); q.lineTo(x+56,70); q.stroke(); }
+        q.fillStyle='#3a4450'; for (let x=12;x<w;x+=64) for (const y of [14,136,198]){ q.fillRect(x,y,36,36); } q.fillStyle='rgba(255,255,255,.35)'; for (let x=12;x<w;x+=64) for (const y of [14,136,198]) for (let k=0;k<36;k+=9) q.fillRect(x+k,y,1,36); }));
+      timber.wrapS = timber.wrapT = THREE.RepeatWrapping; const tm = std(0xffffff,{map:timber,roughness:.9});
+      ubox(g, 0,7,-6, 44,14,12, tm); for (let k=-2;k<=2;k++) prism(8.6,5,12,tm,k*8.8,14,-6,g); box(46,.6,13,GL.slate,0,14.1,-6,g);
+      bakeGroup(g); solidOBB(x - 6*Math.sin(yaw), z - 6*Math.cos(yaw), 22, 6, yaw);
+      lm('Staple Inn', x, 8, z, 50, "A timber-framed Tudor frontage of 1586 on High Holborn, one of the few buildings in the City to survive the Great Fire."); }
+
+    // ---- Marylebone Road and Euston Road, Euston, St Pancras and King's Cross ----
+    const EUR = [[-2400,-1790],[-1240,-1905],[-630,-2074],[-407,-2202],[662,-2790]];
+    roadLine(EUR, 20);                                                                      // Marylebone Road and Euston Road
+    roadLine([[662,-2790],[1971,-3033]], 16);                                               // Pentonville Road, up to the Angel
+    roadLine([[662,-2790],[1516,-1217]], 14);                                               // Gray's Inn Road, down to Holborn
+    const CAM = [[-630,-2074],[-654,-3289],[-966,-3928],[-1237,-4197],[-1380,-4340]];
+    roadLine(CAM, 14);                                                                      // Hampstead Road, Camden High Street, Chalk Farm Road
+    // Euston: the 1968 station behind Euston Square Gardens and the two old lodges, and Euston Tower on the corner
+    { const g = new THREE.Group(), X = -255, Z = -2510;
+      gbox(g, X, Z, 230, 60, 13, GLASS); box(232,1,62,GL.iron,X,13.5,Z,g); box(230,9,260,GL.slate,X,4.5,Z-160,g); cityCol.push([X-115,Z-290,X+115,Z-30]);
+      for (const dx of [-42,42]) gbox(g, X+dx, -2318, 10, 10, 9, GL.portland);
+      gbox(g, -700, -2160, 36, 36, 124, GLASS2);
+      bakeGroup(g); keepOut(X-120,Z-300,X+120,Z+32); keepOut(-722,-2182,-678,-2138); lawn(170,90,X,-2372);
+      for (let a=X-70; a<=X+70; a+=28) for (const b of [-2400,-2345]) extraTrees.push([a,b,.9]);
+      lm('Euston Tower', -700, 60, -2160, 140, "A 124-metre office tower of 1970 on the corner of Euston Road and Hampstead Road."); }
+    station('Euston', 'Northern and Victoria lines', -255, -2479, 0, {noBody:true, desc:"Northern and Victoria lines, beneath Euston station, the London end of the West Coast Main Line.", lm:{major:true}});
+    // St Pancras: George Gilbert Scott's Gothic Midland Grand Hotel along Euston Road, with Barlow's great train shed behind
+    const SPN = (() => { const d = [EUR[4][0]-EUR[3][0], EUR[4][1]-EUR[3][1]], l = Math.hypot(...d), yaw = Math.atan2(-d[1]/l, d[0]/l);
+      const t = (350 - EUR[3][0])/d[0], x = EUR[3][0] + d[0]*t + d[1]/l*45, z = EUR[3][1] + d[1]*t - d[0]/l*45;   // 45 m north of the road
+      return {x, z, yaw, W:(lx,lz) => [x + lx*Math.cos(yaw) + lz*Math.sin(yaw), z - lx*Math.sin(yaw) + lz*Math.cos(yaw)]}; })();
+    { const g = new THREE.Group(), R = NL.pancras; g.position.set(SPN.x,0,SPN.z); g.rotation.y = SPN.yaw;   // local +x along Euston Road, +z towards it
+      ubox(g, 0,14,0, 200,28,30, R); box(202,7,26,GL.slate,0,31.5,-2,g);
+      for (let x=-90; x<=90; x+=15){ const c = new THREE.Mesh(new THREE.ConeGeometry(1.3,6,4), GL.slate); c.position.set(x,37.5,13); g.add(c); }
+      ubox(g, 96,38,0, 13,76,13, R); { const c = new THREE.Mesh(new THREE.ConeGeometry(8.5,14,4), GL.slate); c.rotation.y = Math.PI/4; c.position.set(96,83,0); g.add(c); }   // the clock tower
+      const clock = new THREE.Mesh(new THREE.CircleGeometry(3,24), new THREE.MeshBasicMaterial({map:clockTex})); clock.position.set(96,62,6.6); g.add(clock);
+      ubox(g, -96,30,0, 14,60,14, R); { const c = new THREE.Mesh(new THREE.ConeGeometry(9,12,4), GL.slate); c.rotation.y = Math.PI/4; c.position.set(-96,66,0); g.add(c); }
+      const shed = new THREE.Mesh(new THREE.CylinderGeometry(37,37,210,20,1,true,Math.PI/2,Math.PI), std(0x8a9aa6,{metalness:.5,roughness:.35})); shed.rotation.x = Math.PI/2; shed.scale.set(1,1,.82);
+      shed.position.set(-10,6,-120); g.add(shed); for (const sx of [-37,37]) box(2,6,210,R,-10+sx,3,-120,g);
+      bakeGroup(g); solidOBB(...SPN.W(0,0), 100, 15, SPN.yaw); solidOBB(...SPN.W(-10,-120), 38, 105, SPN.yaw);
+      const [px, pz] = SPN.W(0,0); lm('St Pancras', px, 40, pz, 220, "George Gilbert Scott's Gothic Midland Grand Hotel of 1873 fronts William Barlow's great iron train shed, home of the Eurostar.", {major:true}); }
+    // King's Cross (Lewis Cubitt, 1852): yellow stock brick, two great arched windows and a clock tower; the white lattice
+    // roof of the western concourse beside it
+    { const g = new THREE.Group(), K = NL.stock, X = 537, Z = -2850;
+      gbox(g, X, Z, 78, 30, 26, K); box(10,12,10,K,X,32,Z,g); { const c = new THREE.Mesh(new THREE.ConeGeometry(7.5,5,4), GL.slate); c.rotation.y = Math.PI/4; c.position.set(X,40.5,Z); g.add(c); }
+      const kc = new THREE.Mesh(new THREE.CircleGeometry(2.6,24), new THREE.MeshBasicMaterial({map:clockTex})); kc.position.set(X,32,Z+5.05); g.add(kc);
+      const dark = std(0x2a3036,{metalness:.4,roughness:.3});
+      for (const dx of [-19,19]){ const a = new THREE.Mesh(new THREE.PlaneGeometry(24,14), dark); a.position.set(X+dx,7,Z+15.05); g.add(a);
+        const top = new THREE.Mesh(new THREE.CircleGeometry(12,24,0,Math.PI), dark); top.position.set(X+dx,14,Z+15.05); g.add(top);
+        const sh = new THREE.Mesh(new THREE.CylinderGeometry(17,17,240,16,1,true,Math.PI/2,Math.PI), std(0x8a9aa6,{metalness:.5,roughness:.35})); sh.rotation.x = Math.PI/2; sh.scale.set(1,1,.7); sh.position.set(X+dx,10,Z-135); g.add(sh); }
+      cityCol.push([X-38,Z-255,X+38,Z-15]);
+      const conc = new THREE.Mesh(new THREE.SphereGeometry(46,32,8,0,Math.PI*2,0,Math.PI/2), std(0xf2f4f6,{metalness:.3,roughness:.4})); conc.scale.y = .3; conc.position.set(452,0,-2905); g.add(conc);
+      cityCol.push([420,-2937,484,-2873]);
+      bakeGroup(g); keepOut(400,-3110,580,-2830); keepOut(400,-2830,580,-2735); MAP.plazas.push({x:500, z:-2790, w:160, d:70, rot:0, col:'#6e675a'});
+      lm("King's Cross", X, 20, Z, 120, "Lewis Cubitt's station of 1852 with its two great arched windows, and beside it the white lattice roof of the 2012 western concourse.", {major:true}); }
+    station("King's Cross St Pancras", 'Circle, H&C, Metropolitan, Northern, Piccadilly, Victoria', 470, -2788, 0, {w:14, mat:NL.glass,
+      desc:"Six Underground lines meet here: Circle, Hammersmith & City, Metropolitan, Northern, Piccadilly and Victoria."});
+
+    // ---- the Angel and Islington ----
+    const UPS = [[1971,-3033],[2219,-3558],[2140,-4330]], CITYRD = [[1971,-3033],[3282,-2189],[3262,-1665],[3200,-1300],[3131,-640]];
+    roadLine(UPS, 16);                                                                      // Islington High Street and Upper Street
+    roadLine(CITYRD, 16);                                                                   // City Road, Finsbury Pavement and Moorgate, down to Bank
+    station('Angel', 'Northern line', ...roadside(UPS[0], UPS[1], .07, 15), {w:14, desc:"Northern line, named after the old coaching inn at this crossroads, with some of the longest escalators on the Underground."});
+    { const g = new THREE.Group();                                                           // the domed corner building at the Angel
+      gbox(g, 1945, -3062, 40, 40, 22, PORTLAND); cyl(5,5,26,16,GL.portland,1962,13,-3045,g); dome(5.4,1.4,GL.lead,1962,26,-3045,g,16); cyl(.3,.8,3.5,8,goldM,1962,35.3,-3045,g);
+      bakeGroup(g); keepOut(1922,-3085,1970,-3038); }
+    // Islington Green, and the Business Design Centre (the Royal Agricultural Hall, 1862) under its iron and glass roof
+    lawn(90,70,2290,-3540); zones.push([2245,-3575,2335,-3505]);
+    for (let a=2255; a<=2325; a+=22) for (let b=-3565; b<=-3515; b+=22) extraTrees.push([a,b,.9]);
+    lm('Islington Green', 2290, 6, -3540, 90, "The little green at the heart of Upper Street, Islington's busiest high street.");
+    { const g = new THREE.Group(), X = 2108, Z = -3420;
+      gbox(g, X, Z, 60, 120, 12, NL.redBrick); const roof = new THREE.Mesh(new THREE.CylinderGeometry(30,30,120,18,1,true,Math.PI/2,Math.PI), std(0x8a9aa6,{metalness:.5,roughness:.35}));
+      roof.rotation.x = Math.PI/2; roof.scale.set(1,1,.6); roof.position.set(X,12,Z); g.add(roof); for (const dz of [-61,61]) box(60,6,2,NL.redBrick,X,15,Z+dz,g);
+      bakeGroup(g); keepOut(X-32,Z-62,X+32,Z+62);
+      lm('Business Design Centre', X, 15, Z, 140, "The Royal Agricultural Hall of 1862, once home to cattle shows, now an exhibition centre under its great iron and glass roof."); }
+    // Finsbury Square, and Moorgate
+    lawn(120,110,3338,-1665); zones.push([3278,-1720,3398,-1610]);
+    for (let a=3290; a<=3386; a+=24) for (const b of [-1708,-1622]) extraTrees.push([a,b,.95]);
+    lm('Finsbury Square', 3338, 6, -1665, 120, "A garden square laid out in 1777 on the City's northern edge, now ringed by offices.");
+    station('Moorgate', 'Northern, Circle, H&C, Metropolitan · Elizabeth line', ...roadside(CITYRD[3], CITYRD[4], .02, 15), {w:18, desc:"Northern, Circle, Hammersmith & City and Metropolitan lines and the Elizabeth line, named after a gate in the old City wall."});
+
+    // ---- Camden: Mornington Crescent, Camden High Street's painted shopfronts, Camden Town and Camden Lock ----
+    station('Mornington Crescent', 'Northern line', ...roadside(CAM[0], CAM[1], .99, 15), {w:12, mat:NL.oxblood, desc:"Northern line, in Leslie Green's ox-blood red tiles, at the foot of Camden High Street."});
+    station('Camden Town', 'Northern line', ...roadside(CAM[1], CAM[2], .96, -16), {w:16, mat:NL.oxblood, desc:"Northern line, at the fork of Camden High Street and Kentish Town Road."});
+    { const shops = ['LOCK RECORDS','PUNK ALLEY','BOOTS & BRAWN','NEON NOODLE','VINTAGE ROCK','SKA TATTOO','STREET EATS','LEATHER LANE','HIGH ST VINYL','CANDY CAMDEN'];
+      const cols = ['#d8343a','#2f6fd0','#f0c23a','#36a35a','#8a3ad0','#ff7a2a','#1f2a33','#e85aa8'];
+      const camMats = cols.map((base,i) => { const t = srgb(canvasTex(256,256,(q,w,h)=>{ q.fillStyle = base; q.fillRect(0,0,w,h);
+          for (let i2=0;i2<900;i2++){ q.fillStyle = rand() < .5 ? 'rgba(0,0,0,.06)' : 'rgba(255,255,255,.06)'; q.fillRect(rand()*w, rand()*h, 3, 3); }
+          for (const x of [40,152]) for (const y of [26,96]){ q.fillStyle = '#f2efe6'; q.fillRect(x-4,y-4,72,52); q.fillStyle = '#20262e'; q.fillRect(x,y,64,44); }
+          q.fillStyle = '#111'; q.fillRect(0,170,w,22); q.fillStyle = '#fff'; q.font = '800 17px Arial,sans-serif'; q.textAlign = 'center'; q.fillText(shops[i % shops.length], w/2, 187, w-10);
+          q.fillStyle = '#2a2e34'; q.fillRect(14,196,w-28,60); q.fillStyle = '#ffd9a0'; for (const x of [24,96,168]) q.fillRect(x,204,62,44); }));
+        t.wrapS = t.wrapT = THREE.RepeatWrapping; const m = std(0xffffff,{map:t, roughness:.85}); return m; });
+      const props = [];
+      for (const [a, b] of [[CAM[1], CAM[2]], [CAM[2], CAM[3]]]){ const dx = b[0]-a[0], dz = b[1]-a[1], len = Math.hypot(dx,dz), ux = dx/len, uz = dz/len, yaw = Math.atan2(-uz, ux);
+        for (const sd of [1,-1]) for (let s=14, n=0; s<len-14; n++){ const w = 9 + rand()*4, t = (s + w/2)/len, cx = a[0] + dx*t - uz*sd*17, cz = a[1] + dz*t + ux*sd*17;
+          if (!nearCanal(cx,cz,16) && !zones.some(([x1,z1,x2,z2]) => cx > x1-6 && cx < x2+6 && cz > z1-6 && cz < z2+6)){
+            const mat = camMats[Math.floor(rand()*camMats.length)], g = mgrp(mat, cx, cz); g.occlude = true; rbox(g, cx, cz, w, 14, 10 + rand()*5, yaw);
+            obbs.push([cx, cz, w/2, 7, Math.cos(yaw), Math.sin(yaw)]); const R = w/2 + 8; zones.push([cx-R,cz-R,cx+R,cz+R]);
+            if (n % 7 === 3) props.push([cx + uz*sd*8.2, cz - ux*sd*8.2, yaw, props.length % 3]); }
+          s += w + .4; } }
+      // giant boots, jeans and a guitar over the shopfronts, Camden-style
+      const g = new THREE.Group();
+      for (const [x, z, yaw, k] of props){ const p = new THREE.Group(); p.position.set(x, 7.5, z); p.rotation.y = yaw; g.add(p);
+        if (k === 0){ box(2.2,4.6,2.4,std(0x141416,{roughness:.5}),0,1.2,0,p); box(2.4,1.6,5,std(0x141416,{roughness:.5}),0,-1.3,1.3,p); box(2.6,.4,5.2,std(0x7a2e14),0,-2.2,1.3,p); }
+        else if (k === 1){ for (const dx of [-.9,.9]) box(1.6,5,1,std(0x2f4f8a,{roughness:.9}),dx,0,0,p); box(3.6,1.2,1.1,std(0x2f4f8a,{roughness:.9}),0,2.9,0,p); }
+        else { const body = new THREE.Mesh(new THREE.CylinderGeometry(2,2,.6,20), std(0xc4161c,{roughness:.4})); body.rotation.x = Math.PI/2; body.position.y = -1; p.add(body); box(.5,5,.4,std(0x2a1a12),0,2.4,0,p); } }
+      bakeGroup(g, 1600); }
+    // Camden Lock: the road bridge over the canal, the lock's black-and-white gates, and the famous sign on the railway bridge
+    { const [ax, az] = CAM[2], [bx, bz] = CAM[3], dx = bx-ax, dz = bz-az, len = Math.hypot(dx,dz), yaw = Math.atan2(dx/len, dz/len);
+      const cross = CANAL[2], g = new THREE.Group(); g.position.set(cross[0],0,cross[1]); g.rotation.y = yaw;   // local +z along the road
+      box(24,.3,26,paving,0,-.13,0,g); box(23.4,1.4,26,std(0x2a2d33,{metalness:.5,roughness:.4}),0,-.98,0,g); for (const sx of [-1,1]) box(.5,1.1,26,GL.iron,sx*11.75,.57,0,g);
+      bakeGroup(g);
+      const lockG = new THREE.Group(); for (const dxl of [-28,-22]){ const p = box(16,1.4,1,std(0x141416),cross[0]+dxl,-.6,cross[1]+4,lockG); box(7,.3,.3,std(0xf2f2ee),cross[0]+dxl-6,1,cross[1]+4,lockG); }
+      bakeGroup(lockG);
+      const t = .72, rx = ax + dx*t, rz = az + dz*t, rg = new THREE.Group(); rg.position.set(rx,0,rz); rg.rotation.y = yaw;
+      const blk = std(0x141416,{metalness:.5,roughness:.4});
+      for (const sx of [-1,1]) box(2.4,6.4,3,blk,sx*10.5,3.2,0,rg); box(26,2.6,3.4,blk,0,7.7,0,rg);
+      const sign = srgb(canvasTex(512,64,(q,w,h)=>{ q.fillStyle='#141416'; q.fillRect(0,0,w,h); q.fillStyle='#f4f1e6'; q.font='900 44px Arial,sans-serif'; q.textAlign='center'; q.fillText('CAMDEN LOCK',w/2,48); }));
+      for (const sz of [-1,1]){ const p = new THREE.Mesh(new THREE.PlaneGeometry(20,2.4), new THREE.MeshBasicMaterial({map:sign})); p.position.set(0,7.7,sz*1.75); if (sz < 0) p.rotation.y = Math.PI; rg.add(p); }
+      bakeGroup(rg); for (const sx of [-1,1]) cityCol.push([rx + sx*10.5*Math.cos(yaw) - 1.5, rz - sx*10.5*Math.sin(yaw) - 1.5, rx + sx*10.5*Math.cos(yaw) + 1.5, rz - sx*10.5*Math.sin(yaw) + 1.5]);
+      lm('Camden Lock', cross[0], 6, cross[1], 80, "Where Camden High Street crosses the Regent's Canal: the lock, the markets, and the famous sign on the railway bridge.");
+      // the canal blocks Tommy, except over the road bridge
+      for (let i=1;i<CANAL.length;i++){ let [x1,z1] = CANAL[i-1], [x2,z2] = CANAL[i]; const l = Math.hypot(x2-x1,z2-z1), ux = (x2-x1)/l, uz = (z2-z1)/l;
+        if (i === 2){ x2 -= ux*16; z2 -= uz*16; } if (i === 3){ x1 += ux*16; z1 += uz*16; }
+        const L2 = Math.hypot(x2-x1,z2-z1), cy = Math.atan2(-uz, ux); obbs.push([(x1+x2)/2, (z1+z2)/2, L2/2, CAN_W + .5, Math.cos(cy), Math.sin(cy)]); } }
+    // Regent's Park (John Nash, 1811), west of Camden
+    const REGENT = [[-1240,-1950],[-2400,-1840],[-2400,-3420],[-1330,-3460]];
+    { const m = new THREE.Mesh(new THREE.ShapeGeometry(new THREE.Shape(REGENT.map(([x,z]) => new THREE.Vector2(x,-z)))), grass); m.rotation.x = -Math.PI/2; m.position.y = .03; fsc.add(m);
+      MAP.greens.push({poly:REGENT});
+      lm("Regent's Park", -1800, 8, -2650, 500, "John Nash's royal park of 1811, ringed by his stucco terraces, with London Zoo on its northern edge.", {major:true}); }
+
+    // ---- the Admiralty, at the top of Whitehall: the Ripley Building (1726) behind Robert Adam's screen, and the Old
+    // Admiralty Building of the 1890s in red brick and Portland stone, on the north side of Horse Guards Parade ----
+    { const g = new THREE.Group(), OB = NL.banded, S = GL.portland;
+      gbox(g, -40, 115, 64, 36, 22, OB); box(66,4,38,GL.slate,-40,24,115,g);
+      for (const [x,z] of [[-72,97],[-8,97],[-72,133],[-8,133]]){ gbox(g, x, z, 9, 9, 28, OB); dome(4.6,1.3,GL.lead,x,28,z,g,16); cyl(.6,.9,3,8,GL.white,x,35.5,z,g); }
+      gbox(g, -24, 84, 28, 22, 16, NL.redBrick); box(30,3,24,GL.slate,-24,17.5,84,g);
+      box(3,1,16,S,-9,.5,84,g); for (const zz of [78,82,86,90]) cyl(.7,.75,11,10,S,-8.5,6.5,zz,g); box(3,1.4,16,S,-8.5,12.7,84,g); prism(16,4,3,S,-8.5,13.4,84,g,Math.PI/2);
+      box(1.2,6,24,S,1,3,84,g); for (const zz of [73.5,76.5,91.5,94.5]) cyl(.45,.45,6,8,S,1.9,3,zz,g); cityCol.push([.4,72,1.6,96]);
+      bakeGroup(g); keepOut(-78,70,2,138);
+      lm('The Admiralty', -24, 10, 84, 50, "The Ripley Building of 1726, the Royal Navy's old headquarters, behind Robert Adam's columned screen on Whitehall.");
+      lm('Old Admiralty Building', -40, 15, 115, 90, "The Admiralty Extension of the 1890s in red brick and Portland stone, on the north side of Horse Guards Parade."); }
+
     // exclusion zones for the street grid: parks, squares, landmarks, the river
     const rects = [[-100,-105,115,65],[-140,140,-5,360],[-1475,-260,-900,300],[-1440,330,-990,830],[-1050,340,-900,480],[20,870,215,1020],[200,940,330,1300],[-70,1040,170,1135],[160,345,240,420],[170,820,330,945], ...zones];
     const SJa = [Math.cos(PARK_SJ.rot)*380, -Math.sin(PARK_SJ.rot)*380];   // St James's Park's long axis
-    const inZone = (x,z,r) => rects.some(([a,b,c,d]) => x > a-r && x < c+r && z > b-r && z < d+r) || RIVER.inside(x,z,30+r) || inSoho(x,z,r) || inHyde(x,z,r)
+    const inZone = (x,z,r) => rects.some(([a,b,c,d]) => x > a-r && x < c+r && z > b-r && z < d+r) || RIVER.inside(x,z,30+r) || nearCanal(x,z,20+r) || inSoho(x,z,r) || inHyde(x,z,r) || inPolyR(REGENT,x,z,r)
       || segDist(x,z,PARK_SJ.x-SJa[0],PARK_SJ.z-SJa[1],PARK_SJ.x+SJa[0],PARK_SJ.z+SJa[1]) < 165 + r
       || segDist(x,z,15,40,60,900) < 66 + r;                                     // the Whitehall frontage
     const mains = roads.slice(), nearMain = (x,z,r) => mains.some(rd => segDist(x,z,rd.x1,rd.z1,rd.x2,rd.z2) < rd.w/2 + 6 + r);
     // an even 100 m street grid: 10 m side streets, buildings set back behind 5 m pavements
-    const G = 100, X0 = -2400, Z0 = -1100, NX = 73, NZ = 30;   // Hyde Park to the Tower, beyond Oxford Street to Pimlico
+    const G = 100, X0 = -2400, Z0 = -4300, NX = 73, NZ = 62;   // Hyde Park to the Tower, Camden and Islington down to Pimlico
     for (let i=0; i<=NX; i++) for (let j=0; j<NZ; j++){ const x = X0 + i*G, z1 = Z0 + j*G, z2 = z1 + G; if (!inZone(x,(z1+z2)/2,4) && !nearMain(x,(z1+z2)/2,-20)) road(x,z1,x,z2,10,TARMAC2,.05); }
     for (let j=0; j<=NZ; j++) for (let i=0; i<NX; i++){ const z = Z0 + j*G, x1 = X0 + i*G, x2 = x1 + G; if (!inZone((x1+x2)/2,z,4) && !nearMain((x1+x2)/2,z,-20)) road(x1,z,x2,z,10,TARMAC2,.062); }
     // blocks: one even mansion block per cell, or four smaller ones where a main road cuts the corner
-    // districts: the South Bank, Belgravia's white stucco, the City's glass and stone, Fleet Street, Victoria Street's offices,
-    // Mayfair and Soho's brick, St James's and Westminster
-    const district = (x,z) => RIVER.side(x,z) < 0 ? [GLASS, CREAM] : x < -1465 && z > 330 ? [STUCCO, STUCCO] : x > 2900 ? [GLASS2, GLASS] : x > 1600 ? [PORTLAND, GLASS2]
+    // districts: the South Bank, Belgravia's white stucco, Camden and Islington's brick and stucco, the King's Cross offices,
+    // the City's glass and stone, Fleet Street, Victoria Street's offices, Bloomsbury, Mayfair and Soho's brick, St James's and Westminster
+    const district = (x,z) => RIVER.side(x,z) < 0 ? [GLASS, CREAM] : x < -1465 && z > 330 ? [STUCCO, STUCCO] : z < -3000 || (z < -2700 && x > 1300) ? [BRICK, STUCCO]
+      : z < -2700 && x > 0 ? [GLASS2, BRICK] : x > 2900 ? [GLASS2, GLASS] : x > 1600 ? [PORTLAND, GLASS2]
       : x > 600 && z < 0 ? [PORTLAND, CREAM] : z > 1050 && x < 0 ? [GLASS2, PORTLAND] : z < -60 ? [BRICK, CREAM] : x < -150 ? [CREAM, PORTLAND] : [PORTLAND, PORTLAND];
     const roofMat = std(0x5c5f66,{roughness:.8});
     // blocks are merged into a few meshes per 500 m chunk; each still collides and gets its trims
@@ -2598,7 +2780,7 @@ function buildScene(){
       cityCol.push([cx-w/2,cz-d/2,cx+w/2,cz+d/2]); trims.push([cx,cz,w,d,h,0,mat === GLASS || mat === GLASS2]); };
     for (let i=0; i<NX; i++) for (let j=0; j<NZ; j++){
       const cx = X0 + i*G + G/2, cz = Z0 + j*G + G/2, mats = district(cx,cz), mat = mats[(i+j)%2];
-      const h = mat === STUCCO ? 18 + ((i+j)%2)*3 : 21 + ((i + 2 + j*2) % 3)*3 + (cx > 2600 && mats[0] === GLASS2 ? ((i*7 + j*3) % 5)*8 : 0);
+      const h = mat === STUCCO ? 18 + ((i+j)%2)*3 : 21 + ((i + 2 + j*2) % 3)*3 + (cx > 2600 && cz > -2000 && mats[0] === GLASS2 ? ((i*7 + j*3) % 5)*8 : 0);
       if (!inZone(cx,cz,39) && !nearMain(cx,cz,39)) { block(cx,cz,78,78,h,mat); continue; }
       for (const [ox,oz] of [[-1,-1],[1,-1],[-1,1],[1,1]]){ const qx = cx + ox*21, qz = cz + oz*21; if (!inZone(qx,qz,17) && !nearMain(qx,qz,17)) block(qx,qz,34,34,h,mat); }
     }
@@ -2859,6 +3041,7 @@ function buildScene(){
       const inSerp = (x,z) => { const [lx,lz] = local(x,z,-2330,-560,-.2); return (lx/170)**2 + (lz/50)**2 < 1; };
       lattice(-990,150,-120,760,30,(x,z) => inSJ(x,z) && !inLake(x,z));
       lattice(-2420,-985,-1500,325,44,(x,z) => inHyde(x,z,-12) && !inSerp(x,z));            // Hyde Park
+      lattice(-2400,-3460,-1240,-1840,60,(x,z) => inPoly(REGENT,x,z));                       // Regent's Park
       lattice(-205,-255,-105,-170,24,() => true);                                   // Leicester Square
       lattice(-298,-902,-252,-848,18,(x,z) => Math.hypot(x+275, z+875) > 9);      // Soho Square, round the hut
       lattice(-1450,-230,-950,270,32,() => true);
@@ -2988,7 +3171,7 @@ function buildScene(){
     const tommy = buildTommy(); ph.add(tommy.root); attachGLB(tommy); wearChar(tommy, 'tommy-toon');
     const shadow = addShadow(ph, 0, 0, 1.1, .9);
     const P = {x:5.6, z:-5, yaw:Math.PI*.5, camYaw:-Math.PI*.35, pitch:.32, walk:0, speed:0};
-    Object.assign(MAP, {roads, riverPoly:RIVER.poly,
+    Object.assign(MAP, {roads, riverPoly:RIVER.poly, waters:[canalPoly],
       roadsIn:(cx,cz,R) => { const out = new Set(); for (let i=Math.floor((cx-R)/BK); i<=Math.floor((cx+R)/BK); i++) for (let j=Math.floor((cz-R)/BK); j<=Math.floor((cz+R)/BK); j++) for (const ri of buckets.get(i*10007+j) || []) out.add(roads[ri]); return out; }});
 
     /* ---- the real London sky in free roam: time of day and live weather (the PM's cutscene always stays at night) ---- */
@@ -3140,7 +3323,7 @@ function buildScene(){
       return colIdx; };
     // the minimap draws the buildings round Tommy from the same buckets
     MAP.colsIn = (x0,z0,x1,z1) => { const out = new Set(), idx = colIndex(); for (let i=Math.floor(x0/COLB); i<=Math.floor(x1/COLB); i++) for (let j=Math.floor(z0/COLB); j<=Math.floor(z1/COLB); j++) for (const c of idx.get(i*100003+j) || []) out.add(c); return out; };
-    const hitsStatic = (x,z,r) => { if (x < -2400 || x > 4900 || z < -1150 || z > 1900 || (RIVER.inside(x,z,6+r) && !onBridge(x,z))) return true;
+    const hitsStatic = (x,z,r) => { if (x < -2400 || x > 4900 || z < -4350 || z > 1900 || (RIVER.inside(x,z,6+r) && !onBridge(x,z))) return true;
       const near = colIndex().get(Math.floor(x/COLB)*100003 + Math.floor(z/COLB)); if (!near) return false;
       for (const c of near){
         if (c.length === 4){ if (x > c[0]-r && x < c[2]+r && z > c[1]-r && z < c[3]+r) return true; }
@@ -3921,9 +4104,10 @@ function freeScope(lm){
 }
 // minimap: a dark street map in the open-world style, north up. Markers are colour-coded by kind (government purple,
 // sights gold, the Eye teal, the Tube as a roundel); a light cone shows where the camera is looking.
-const BLIP = {"St Paul's Cathedral":'SP','Tower of London':'TL','Tower Bridge':'TB','The Shard':'SH','The Gherkin':'G','The Walkie-Talkie':'WT','The Monument':'M','Tate Modern':'TM',
+const BLIP = {'Staple Inn':'SI','Euston Tower':'ET','St Pancras':'PN',"King's Cross":'KX','Islington Green':'IG','Business Design Centre':'BD','Finsbury Square':'FS',
+  'Camden Lock':'CL',"Regent's Park":'RP','The Admiralty':'AD','Old Admiralty Building':'OA',"St Paul's Cathedral":'SP','Tower of London':'TL','Tower Bridge':'TB','The Shard':'SH','The Gherkin':'G','The Walkie-Talkie':'WT','The Monument':'M','Tate Modern':'TM',
   'Millennium Bridge':'MB',"Cleopatra's Needle":'CN','Westminster Cathedral':'WC','Wellington Arch':'AR','Marble Arch':'MA','Hyde Park':'HY','Belgrave Square':'BS','Piccadilly Circus':'PI','Leicester Square':'LS','Chinatown':'CT','Soho Square':'SS','Carnaby Street':'CS','Centre Point':'CP','Portcullis House':'PC','Westminster Station':'U','10 Downing Street':'10','Cabinet Office':'CO','Big Ben':'BB','Houses of Parliament':'HP','Westminster Abbey':'WA','The Cenotaph':'C','Trafalgar Square':'TS','Buckingham Palace':'BP','London Eye':'LE'};
-const BLIP_KIND = {'10 Downing Street':'gov','Cabinet Office':'gov','Houses of Parliament':'gov','Portcullis House':'gov','Westminster Station':'tube','London Eye':'eye'};
+const BLIP_KIND = {'The Admiralty':'gov','Old Admiralty Building':'gov','10 Downing Street':'gov','Cabinet Office':'gov','Houses of Parliament':'gov','Portcullis House':'gov','Westminster Station':'tube','London Eye':'eye'};
 // the accent follows the time of day, so it's read from CSS (at most once a second)
 let accentCache = '#A35CF0', accentAt = -1e9;
 const accentNow = () => { const t = performance.now(); if (t - accentAt > 1000){ accentAt = t; accentCache = getComputedStyle(document.body).getPropertyValue('--accent').trim() || accentCache; } return accentCache; };
@@ -3995,7 +4179,7 @@ async function roamInteract(){
   const lvl = api.travel();
   $('roam').querySelector('.objective b').textContent = lvl === 'street' ? 'Central London' : "Tommy's apartment complex";
   $('objText').textContent = lvl === 'street'
-    ? 'Explore London on foot, from Hyde Park and Belgravia to St Paul\'s and the Tower. The lift back up is at the tower door.'
+    ? 'Explore London on foot, from Camden and Islington to Belgravia, St Paul\'s and the Tower. The lift back up is at the tower door.'
     : 'Back home. The telescope on the terrace looks out over London.';
   await new Promise(r => setTimeout(r, 400));
   await fadeTo(false);
@@ -4012,7 +4196,7 @@ function drawCityMap(P, M, landmarks){
   const poly = (pts, fill) => { g.fillStyle = fill; g.beginPath(); pts.forEach(([x,z],i) => i ? g.lineTo(X(x),Z(z)) : g.moveTo(X(x),Z(z))); g.closePath(); g.fill(); };
   M.greens.forEach(o => o.poly ? poly(o.poly, '#3d7a47') : rect(o, '#3d7a47')); M.plazas.forEach(o => rect(o, o.col));
   // water: the Thames and the lakes
-  poly(M.riverPoly, '#2f73b5'); g.strokeStyle = '#6fb2e6'; g.lineWidth = 2; g.stroke(); g.fillStyle = '#2f73b5';
+  poly(M.riverPoly, '#2f73b5'); g.strokeStyle = '#6fb2e6'; g.lineWidth = 2; g.stroke(); for (const w of M.waters){ poly(w, '#2f73b5'); g.stroke(); } g.fillStyle = '#2f73b5';
   for (const L of M.lakes) if (near(L.x, L.z, L.rx)){ g.beginPath(); g.ellipse(X(L.x), Z(L.z), L.rx*s, L.ry*s, L.rot, 0, 7); g.fill(); g.stroke(); }
   // streets: side streets grey, main roads bright, The Mall red
   g.lineCap = 'round';

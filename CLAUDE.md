@@ -84,7 +84,7 @@ A game starring Tommy (no last name), set in Westminster, London.
   - The penthouse sits 110 m up a tower at world (200, 380). The world is in metres: +x east, +z south, Trafalgar Square at the origin.
   - Central London is laid out with roughly real geography: Trafalgar Square (Nelson's Column, lions, fountains, National Gallery, St Martin-in-the-Fields), Admiralty Arch and The Mall, the Victoria Memorial, Buckingham Palace, Whitehall with Horse Guards and the Cenotaph, Parliament Square, Big Ben, the Palace of Westminster, Westminster Abbey, the Thames, Westminster Bridge, the London Eye and County Hall, plus St James's Park and Green Park.
     - St James's Park lies south of The Mall and parallel to it (`PARK_SJ.rot` .363). It used to be turned the wrong way and cross The Mall.
-  - **Greater London** (a section of the same name in `buildFree`) stretches the map from Hyde Park (x −2400) to past the Tower (x 4900), and from z −1150 to 1900. Real places are scaled about 1.15 from Trafalgar Square, nudged where the older layout bends the truth. Landmark heights and footprints follow the real buildings.
+  - **Greater London** (a section of the same name in `buildFree`) stretches the map from Hyde Park (x −2400) to past the Tower (x 4900), and from Camden Lock (z −4350) to Pimlico (z 1900). Real places are scaled about 1.15 from Trafalgar Square, nudged where the older layout bends the truth. Landmark heights and footprints follow the real buildings.
     - The Wikipedia and image hosts are blocked from the cloud sessions, so the landmarks are built from architectural knowledge, not photos. If the user supplies reference photos, use them to refine the shapes.
     - **The Thames (`RIVER`)** is a centreline polyline. It runs `bankX(z)+130` north past Westminster, then a Catmull-Rom curve bends it east at Hungerford Bridge, past Temple and Blackfriars, under the City's bridges to the Tower and Tower Bridge.
       - It's 260 m wide (`RIV_W` 130 each side). `RIVER.dist`/`inside` (bucketed), `side` (+1 north/west bank, −1 south/east), `at` (nearest point, fractional index, flow direction), `off`/`offAt` (offset points; positive is the north/west bank).
@@ -104,8 +104,19 @@ A game starring Tommy (no last name), set in Westminster, London.
       - Piccadilly now runs on to the Hyde Park Corner roundabout and Wellington Arch, with Constitution Hill, Grosvenor Place, Knightsbridge and Park Lane.
       - Hyde Park (a polygon lawn, `HYDE`) has the Serpentine, and Marble Arch stands at its corner. Oxford Street runs from Bayswater Road, with New Bond Street.
       - Belgravia is white stucco (`STUCCO`) round Belgrave and Eaton Squares. Mayfair has Grosvenor Square.
-    - **Districts** (`district()`): the South Bank is glass and cream, Belgravia stucco, the City glass (`GLASS2`) and stone with taller blocks east of x 2600, Fleet Street Portland stone, Victoria Street glass offices, and Mayfair and Soho brick.
-  - **Performance (the map is about four times bigger and draws fewer calls than before):**
+    - **North London** (its own section after Greater London) is placed from St Giles Circus (0, −1000) at 1.15 times the real distances.
+      - **Roads:** Tottenham Court Road to Warren Street; High Holborn, Holborn Viaduct and Newgate Street to St Paul's; Kingsway to Aldwych; Marylebone and Euston Road; Pentonville Road to the Angel; Gray's Inn Road; Hampstead Road, Camden High Street and Chalk Farm Road; Upper Street; and City Road, Finsbury Pavement and Moorgate down to Bank.
+      - **New stations:** Tottenham Court Road, Goodge Street, Warren Street, Holborn, Euston, King's Cross St Pancras, Angel, Moorgate, Mornington Crescent and Camden Town. Several are Leslie Green ox-blood (`NL.oxblood`).
+      - **Euston:** the 1968 station behind Euston Square Gardens with the two old lodges, and Euston Tower. **St Pancras** (`SPN`, turned to Euston Road) is the red Gothic hotel (`'gothic'` red texture) with its clock tower and Barlow's train shed. **King's Cross** has its two arched windows and clock tower in stock brick (`'brick'`), its sheds, and the white western concourse.
+      - **The Angel and Islington:** the domed corner building at the Angel, Islington Green and the Business Design Centre. **Finsbury Square** is a lawn with trees. **Staple Inn** is a timber-framed frontage on High Holborn.
+      - **Camden:** painted shopfronts with made-up names along Camden High Street (rotated merged boxes, `rbox`), with giant boots, jeans and guitars over them.
+        - **The Regent's Canal** (`CANAL`, a second hole in the ground; water 2 m down) runs past Camden Lock. The road crosses it on a bridge, and it blocks Tommy elsewhere (`obbs`). The lock gates sit beside the bridge, and "CAMDEN LOCK" is on the railway bridge over Chalk Farm Road.
+      - **Regent's Park** (`REGENT`, a polygon lawn with trees) lies west of Camden.
+      - **The Admiralty** stands at the top of Whitehall, replacing the first west-side frontage block. It's the Ripley Building behind Robert Adam's screen, plus the Old Admiralty Building in red brick banded with Portland stone (`'banded'`) with domed corner towers, on the north side of Horse Guards Parade.
+    - Every `lawn()` keeps the street grid off its ground (`zones`).
+    - **Districts** (`district()`): Camden and Islington are brick and stucco, the King's Cross area glass and brick; the South Bank is glass and cream, Belgravia stucco, the City glass (`GLASS2`) and stone with taller blocks east of x 2600, Fleet Street Portland stone, Victoria Street glass offices, and Mayfair and Soho brick.
+  - **Performance (the map is about eight times its old size and still draws fewer calls than before):**
+    - The cloud sessions' headless browser has no GPU and runs about 1 fps on the street. That's the software compositor, not the game: driven by hand, a frame's logic takes 1–5 ms and its drawing 6–90 ms even in software. Judge speed on a real device.
     - The street grid's blocks and every road are merged per material into 500 m and 600 m chunks (`mgrp`/`quad`/`mbox`, built by `flushMerged`).
     - The new landmarks are built in groups and merged per material by `bakeGroup`.
     - Kerbs are one long stone per unbroken run. Kerbs, lamps, trims and trees are instanced per chunk (`chunkIM`), and every instanced mesh gets a bounding sphere round its instances (`fitIM`). r128 culls instanced meshes by the base geometry alone, which used to make kerbs and trees vanish whenever Trafalgar Square was off screen.
@@ -138,7 +149,7 @@ A game starring Tommy (no last name), set in Westminster, London.
   - **Soho** (north of Trafalgar Square, `inSoho()`):
     - Boundaries: Oxford Street (z −1000), Regent Street (Piccadilly Circus (−465,−277) to Oxford Circus (−1010,−1000), `regentX`), Charing Cross Road (x 0, extended north to St Giles Circus), and Coventry Street / Leicester Square to the south.
     - Shaftesbury Avenue runs diagonally to Cambridge Circus (0,−700), and Piccadilly and Haymarket meet at the Circus.
-    - The generic grid runs from x −2400 to 4900 and z −1100 to 1900.
+    - The generic grid runs from x −2400 to 4900 and z −4300 to 1900.
     - It has **its own tidy grid** of 8 m streets (XS/ZS). Carnaby Street (x −635) is pedestrian-only (`ped`, no cars). Gerrard Street (z −380) is Chinatown; Old Compton Street is z −560.
     - The streets are lined with narrow frontages built by `frontage()`:
       - Each has a brick or stucco facade with sash windows and a made-up shop at street level (`sohoFacade`: café, bar, records…). Signs and windows glow at night (`sohoMats`).
