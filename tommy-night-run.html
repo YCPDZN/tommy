@@ -1737,7 +1737,7 @@ function buildScene(){
           if(uEnv>.5){col=mix(col,vec3(.42,.4,.37)*(.25+.75*smoothstep(0.,.4,uSunAmt)),smoothstep(0.,-.12,d.y));gl_FragColor=linearToOutputTexel(vec4(pow(col,vec3(2.2)),1.));}
           else gl_FragColor=vec4(col,1.);}`});
     const skyMat = skyShader(false);
-    fsc.add(Object.assign(new THREE.Mesh(new THREE.SphereGeometry(3800,48,24), skyMat), {renderOrder:-1}));
+    const skyDome = Object.assign(new THREE.Mesh(new THREE.SphereGeometry(3800,48,24), skyMat), {renderOrder:-1}); fsc.add(skyDome);
     // reflections are re-baked whenever the sky changes (time of day or weather), not every frame
     const pmrem = new THREE.PMREMGenerator(renderer), envScene = new THREE.Scene(); let envRT = null;
     envScene.add(new THREE.Mesh(new THREE.SphereGeometry(50,48,24), skyShader(true)));
@@ -1760,6 +1760,72 @@ function buildScene(){
     const solidCity = (m, x1,z1,x2,z2) => { cityCol.push([x1,z1,x2,z2]); cityMeshes.push({m, x:(x1+x2)/2, z:(z1+z2)/2, r:Math.hypot(x2-x1,z2-z1)/2}); };
     const fb = (w,h,d,mat,x,y,z,parent=fsc) => { const m = box(w,h,d,mat,x,y,z,parent); if (parent === fsc && y-h/2 < 2 && w > 1.2 && d > 1.2) solidCity(m, x-w/2,z-d/2,x+w/2,z+d/2); return m; };
     const flat = (w,d,mat,x,z,y=.05,rot=0) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w,d), mat); m.rotation.set(-Math.PI/2,0,rot); m.position.set(x,y,z); fsc.add(m); return m; };
+    const segDist = (x,z,x1,z1,x2,z2) => { const dx=x2-x1, dz=z2-z1, t=Math.max(0,Math.min(1,((x-x1)*dx+(z-z1)*dz)/(dx*dx+dz*dz))); return Math.hypot(x-x1-t*dx, z-z1-t*dz); };
+    /* ---- keeping a big city cheap to draw ---- */
+    // Chunks of the city are hidden beyond the fog (or sooner, for small things like kerbs and lamp posts). Instanced
+    // meshes get a bounding sphere round all their instances (r128 culls them by the base geometry alone). The street
+    // grid's blocks, the roads and the bigger landmarks are merged per material, so each costs only a draw call or two.
+    const cullables = [];
+    const cull = (o, far=1e9, need=null) => { if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere(); o.updateMatrixWorld();
+      const b = o.geometry.boundingSphere, c = b.center.clone().applyMatrix4(o.matrixWorld); cullables.push({o, x:c.x, z:c.z, r:b.radius*o.matrixWorld.getMaxScaleOnAxis(), far, need}); return o; };
+    const cullCity = () => { const lim = fsc.fog.far + 150, cx = camera.position.x, cz = camera.position.z;
+      for (const c of cullables) c.o.visible = (!c.need || c.need()) && Math.hypot(c.x-cx, c.z-cz) - c.r < Math.min(c.far, lim); };
+    const fitIM = im => { const g = im.geometry; if (!im.count) return im; if (!g.boundingSphere) g.computeBoundingSphere();
+      const a = im.instanceMatrix.array, bb = new THREE.Box3(), v = new THREE.Vector3(); let k = 1;
+      for (let i=0;i<im.count;i++){ const o = i*16; bb.expandByPoint(v.set(a[o+12],a[o+13],a[o+14])); k = Math.max(k, Math.hypot(a[o],a[o+1],a[o+2]), Math.hypot(a[o+4],a[o+5],a[o+6]), Math.hypot(a[o+8],a[o+9],a[o+10])); }
+      const sph = bb.getBoundingSphere(new THREE.Sphere()); sph.radius += (g.boundingSphere.radius + g.boundingSphere.center.length())*k;
+      const g2 = new THREE.BufferGeometry(); for (const n in g.attributes) g2.setAttribute(n, g.attributes[n]); g2.setIndex(g.index); g2.boundingSphere = sph;
+      im.geometry = g2; im.userData.fit = true; return im; };
+    // instanced copies of `geo`, split into chunks so far ones can be culled; `per` instances per item, placed by set(dummy, item, k)
+    const chunkIM = (geo, mat, items, set, o={}) => { const CH = o.chunk || 600, per = o.per || 1, by = new Map(), d = new THREE.Object3D(), out = [];
+      for (const it of items){ const key = Math.floor(it[0]/CH)*10007 + Math.floor(it[1]/CH); let l = by.get(key); if (!l) by.set(key, l = []); l.push(it); }
+      for (const l of by.values()){ const im = new THREE.InstancedMesh(geo, mat, l.length*per);
+        l.forEach((it,i) => { for (let k=0;k<per;k++){ d.position.set(0,0,0); d.rotation.set(0,0,0); d.scale.set(1,1,1); set(d, it, k); d.updateMatrix(); im.setMatrixAt(i*per+k, d.matrix); } });
+        fitIM(im); Object.assign(im.userData, o.ud || {}); fsc.add(im); cull(im, o.far, o.need); out.push(im); }
+      return out; };
+    // merged geometry: quads appended to per-material, per-chunk buffers, made into meshes at the end of the build
+    const merged = new Map();
+    const mgrp = (mat, x, z, CH=500, tag='') => { const k = mat.uuid + tag + '|' + Math.floor(x/CH) + ',' + Math.floor(z/CH); let g = merged.get(k);
+      if (!g) merged.set(k, g = {mat, p:[], n:[], u:[], i:[], flat:false, occlude:false, far:1e9}); return g; };
+    const quad = (g, a, b, c, d, n, uv) => {   // wound to face n
+      const e1 = [b[0]-a[0], b[1]-a[1], b[2]-a[2]], e2 = [c[0]-a[0], c[1]-a[1], c[2]-a[2]];
+      const f = (e1[1]*e2[2]-e1[2]*e2[1])*n[0] + (e1[2]*e2[0]-e1[0]*e2[2])*n[1] + (e1[0]*e2[1]-e1[1]*e2[0])*n[2];
+      if (f < 0){ [b, d] = [d, b]; uv = [uv[0],uv[1], uv[6],uv[7], uv[4],uv[5], uv[2],uv[3]]; }
+      const o = g.p.length/3; g.p.push(...a, ...b, ...c, ...d); for (let k=0;k<4;k++) g.n.push(...n); g.u.push(...uv); g.i.push(o,o+1,o+2, o,o+2,o+3); };
+    // a box without a bottom, its texture tiling every 12 m like boxUV
+    const mbox = (g, cx, y0, cz, w, h, d) => { const x0 = cx-w/2, x1 = cx+w/2, z0 = cz-d/2, z1 = cz+d/2, y1 = y0+h, U = w/12, D = d/12, V = h/12;
+      quad(g, [x0,y0,z1],[x1,y0,z1],[x1,y1,z1],[x0,y1,z1], [0,0,1], [0,0, U,0, U,V, 0,V]);
+      quad(g, [x1,y0,z0],[x0,y0,z0],[x0,y1,z0],[x1,y1,z0], [0,0,-1], [0,0, U,0, U,V, 0,V]);
+      quad(g, [x1,y0,z1],[x1,y0,z0],[x1,y1,z0],[x1,y1,z1], [1,0,0], [0,0, D,0, D,V, 0,V]);
+      quad(g, [x0,y0,z0],[x0,y0,z1],[x0,y1,z1],[x0,y1,z0], [-1,0,0], [0,0, D,0, D,V, 0,V]);
+      quad(g, [x0,y1,z1],[x1,y1,z1],[x1,y1,z0],[x0,y1,z0], [0,1,0], [0,0, U,0, U,D, 0,D]); };
+    const flushMerged = () => { for (const g of merged.values()){ if (!g.i.length) continue; const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(g.p,3)); geo.setAttribute('normal', new THREE.Float32BufferAttribute(g.n,3));
+        geo.setAttribute('uv', new THREE.Float32BufferAttribute(g.u,2)); geo.setIndex(g.i); geo.computeBoundingSphere();
+        const m = new THREE.Mesh(geo, g.mat); if (g.flat) m.userData.noCast = true; fsc.add(m); cull(m, g.far);
+        if (g.occlude) cityMeshes.push({m, x:geo.boundingSphere.center.x, z:geo.boundingSphere.center.z, r:geo.boundingSphere.radius}); } merged.clear(); };
+    // a landmark built from many parts in a group: merge it into one mesh per material, in world space
+    // (flat parts don't cast shadows; instanced meshes, lines and sprites in it are kept as they are)
+    function bakeGroup(grp, far=1e9, occlude=true){
+      grp.updateMatrixWorld(true); const by = new Map(), others = [], nm = new THREE.Matrix3(), v = new THREE.Vector3();
+      grp.traverse(o => { if (o === grp) return; if (!o.isMesh || o.isInstancedMesh){ if (o.isInstancedMesh || o.isLine || o.isPoints || o.isSprite) others.push(o); return; }
+        const flatG = /^(Plane|Circle|Shape)/.test(o.geometry.type), k = o.material.uuid + (flatG ? 'f' : ''); let e = by.get(k); if (!e) by.set(k, e = {mat:o.material, flat:flatG, list:[]}); e.list.push(o); });
+      for (const {mat, flat, list} of by.values()){ let nv = 0, ni = 0;
+        for (const o of list){ const g = o.geometry; nv += g.attributes.position.count; ni += g.index ? g.index.count : g.attributes.position.count; }
+        const pos = new Float32Array(nv*3), nor = new Float32Array(nv*3), uv = new Float32Array(nv*2), idx = new Uint32Array(ni); let base = 0, k = 0;
+        for (const o of list){ const g = o.geometry, P = g.attributes.position, N = g.attributes.normal, U = g.attributes.uv, n = P.count; nm.getNormalMatrix(o.matrixWorld);
+          for (let i=0;i<n;i++){ v.fromBufferAttribute(P,i).applyMatrix4(o.matrixWorld); pos.set([v.x,v.y,v.z], (base+i)*3);
+            if (N){ v.fromBufferAttribute(N,i).applyMatrix3(nm).normalize(); nor.set([v.x,v.y,v.z], (base+i)*3); }
+            if (U){ uv[(base+i)*2] = U.getX(i); uv[(base+i)*2+1] = U.getY(i); } }
+          if (g.index) for (let i=0;i<g.index.count;i++) idx[k++] = g.index.getX(i) + base; else for (let i=0;i<n;i++) idx[k++] = base + i;
+          base += n; }
+        const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos,3)); geo.setAttribute('normal', new THREE.BufferAttribute(nor,3));
+        geo.setAttribute('uv', new THREE.BufferAttribute(uv,2)); geo.setIndex(new THREE.BufferAttribute(idx,1)); geo.computeBoundingSphere();
+        const m = new THREE.Mesh(geo, mat); if (flat) m.userData.noCast = true; fsc.add(m); cull(m, far);
+        if (occlude && !flat) cityMeshes.push({m, x:geo.boundingSphere.center.x, z:geo.boundingSphere.center.z, r:geo.boundingSphere.radius}); }
+      for (const o of others) fsc.attach(o);
+    }
+    const zones = [], noTree = [];   // rects the street grid keeps clear, and landmark footprints trees keep out of
     // box whose texture tiles every 12 m, so facades keep their scale
     function boxUV(w,h,d){ const g = new THREE.BoxGeometry(w,h,d), uv = g.attributes.uv, dims = [[d,h],[d,h],[w,d],[w,d],[w,h],[w,h]];
       for (let f=0; f<6; f++) for (let v=0; v<4; v++){ const i = f*4+v; uv.setXY(i, uv.getX(i)*dims[f][0]/12, uv.getY(i)*dims[f][1]/12); } return g; }
@@ -1799,6 +1865,7 @@ function buildScene(){
       facadeMats.push(m); return m; };
     const PORTLAND = facadeOf('#ddd5c2','#5d6c7c','#cfc6b0'), BRICK = facadeOf('#9a5a44','#4d5866','#e0d8c8'), GLASS = facadeOf('#5b6d80','#4f6c86','#3a4654',true), CREAM = facadeOf('#e8e0cc','#66707c','#d8cfb8');
     const bmats = [PORTLAND, PORTLAND, CREAM, BRICK, GLASS];
+    const GLASS2 = facadeOf('#6f8796','#5d7f99','#2f3a44',true), STUCCO = facadeOf('#f3efe6','#3c4753','#ffffff');
     const trims = [];   // plinth, string course and cornice for every building, instanced at the end of buildFree
     const building = (x,z,w,d,h,mat,rot=0) => { const m = new THREE.Mesh(boxUV(w,h,d), mat); m.position.set(x,h/2,z); m.rotation.y = rot; fsc.add(m); if (!rot) solidCity(m, x-w/2,z-d/2,x+w/2,z+d/2); trims.push([x,z,w,d,h,rot,mat === GLASS]); return m; };
     const stone = std(0xe2dac6,{roughness:.85}), stoneDark = std(0xb8af9a), bronze = std(0x3f4a3a,{metalness:.5,roughness:.5}), goldM = std(0xd8b04a,{metalness:.8,roughness:.3,emissive:0x3a2a00});
@@ -1814,23 +1881,58 @@ function buildScene(){
     const slabTex = srgb(canvasTex(256,256,(g,w,h)=>{g.fillStyle='#6c6964';g.fillRect(0,0,w,h);for(let y=0;y<h;y+=32)for(let x=(y/32%2)*24;x<w+48;x+=48){const v=138+rand()*22;g.fillStyle=`rgb(${v},${v-3},${v-8})`;g.fillRect(x+1,y+1,46,30);}for(let i=0;i<60;i++){g.fillStyle='rgba(40,35,30,.06)';g.beginPath();g.arc(rand()*w,rand()*h,3+rand()*9,0,Math.PI*2);g.fill();}}));
     slabTex.wrapS = slabTex.wrapT = THREE.RepeatWrapping; slabTex.repeat.set(1/4.8,1/4.8); slabTex.anisotropy = 8;
 
-    // ground, river Thames, parks
-    { const gnd = new THREE.Mesh(new THREE.PlaneGeometry(6000,6000), std(0xffffff,{map:slabTex,roughness:.95})); wetMats.push(gnd.material); gnd.rotation.x = -Math.PI/2; gnd.position.set(300,0,300);
-      const uv = gnd.geometry.attributes.uv; for (let i=0;i<uv.count;i++) uv.setXY(i, uv.getX(i)*6000, uv.getY(i)*6000); fsc.add(gnd); }
+    // the river Thames: its west bank south of Hungerford Bridge (Westminster's landmarks are placed from it)
     const bankX = z => z < 150 ? 430 + (150-z)*.3 : z < 700 ? 430 - (z-150)*.18 : z < 1000 ? 331 - (z-700)*.1 : 301 + (z-1000)*.05;
-    { const sh = new THREE.Shape(), pts = [];
-      for (let z=-1500; z<=2200; z+=50) pts.push([bankX(z), z]);
-      sh.moveTo(pts[0][0], -pts[0][1]); pts.forEach(p => sh.lineTo(p[0], -p[1])); [...pts].reverse().forEach(p => sh.lineTo(p[0]+260, -p[1]));
-      const m = new THREE.Mesh(new THREE.ShapeGeometry(sh), water); m.rotation.x = -Math.PI/2; m.position.y = .1; fsc.add(m); }
+    // The river's centreline runs north past Westminster to Hungerford Bridge, then bends east along the Victoria
+    // Embankment, past Temple and Blackfriars, under the City's bridges to the Tower and Tower Bridge, roughly as the real
+    // Thames does (real positions scaled about 1.15 from Trafalgar Square, like the rest of the map). It's 260 m wide and
+    // its water lies 4 m down between granite river walls, so the bridges carry their roads at street level.
+    const RIV_W = 130, WATER_Y = -4;
+    const RIVER = (() => {
+      const pts = []; for (let z=2300; z>200; z-=25) pts.push([bankX(z)+130, z]);
+      const ctl = [[bankX(250)+130,250],[bankX(225)+130,225],[560,150],[700,40],[951,-65],[1158,-180],[1500,-225],[1905,-215],[2365,-146],[2711,-65],[3228,38],[3700,190],[4148,320],[4600,430],[5200,540],[5800,600],[6000,610]];
+      // Catmull-Rom through the control points, about every 25 m
+      for (let i=1; i<ctl.length-2; i++){ const p0 = ctl[i-1], p1 = ctl[i], p2 = ctl[i+1], p3 = ctl[i+2], n = Math.max(1, Math.round(Math.hypot(p2[0]-p1[0], p2[1]-p1[1])/25));
+        for (let k=1;k<=n;k++){ const t = k/n, t2 = t*t, t3 = t2*t; pts.push([0,1].map(c => .5*(2*p1[c] + (p2[c]-p0[c])*t + (2*p0[c]-5*p1[c]+4*p2[c]-p3[c])*t2 + (3*p1[c]-p0[c]-3*p2[c]+p3[c])*t3))); } }
+      const N = pts.length, tan = pts.map((p,i) => { const a = pts[Math.max(0,i-1)], b = pts[Math.min(N-1,i+1)], dx = b[0]-a[0], dz = b[1]-a[1], l = Math.hypot(dx,dz); return [dx/l, dz/l]; });
+      // a point d metres off the centreline: d > 0 towards the north/west bank (the left of the flow's direction here)
+      const off = (i, d) => [pts[i][0] + tan[i][1]*d, pts[i][1] - tan[i][0]*d];
+      const offAt = (s, d) => { const i = Math.min(N-2, Math.floor(s)), f = s - i, a = off(i,d), b = off(i+1,d); return [a[0] + (b[0]-a[0])*f, a[1] + (b[1]-a[1])*f]; };
+      const RB = 100, idx = new Map();
+      for (let i=0;i<N-1;i++){ const [x1,z1] = pts[i], [x2,z2] = pts[i+1], pad = RIV_W + 80;
+        for (let a=Math.floor((Math.min(x1,x2)-pad)/RB); a<=Math.floor((Math.max(x1,x2)+pad)/RB); a++) for (let b=Math.floor((Math.min(z1,z2)-pad)/RB); b<=Math.floor((Math.max(z1,z2)+pad)/RB); b++){
+          const k = a*10007 + b; let l = idx.get(k); if (!l) idx.set(k, l = []); l.push(i); } }
+      const nearest = (x,z) => { let bi = -1, bd = 1e9; for (const i of idx.get(Math.floor(x/RB)*10007 + Math.floor(z/RB)) || []){ const d = segDist(x,z,pts[i][0],pts[i][1],pts[i+1][0],pts[i+1][1]); if (d < bd){ bd = d; bi = i; } } return [bi, bd]; };
+      const dist = (x,z) => nearest(x,z)[1];
+      // which bank a point is on, anywhere on the map: +1 north/west (Westminster, the City), -1 south/east (Lambeth, Southwark)
+      const side = (x,z) => { let bi = 0, bd = 1e18; for (let i=0;i<N;i++){ const d = (pts[i][0]-x)**2 + (pts[i][1]-z)**2; if (d < bd){ bd = d; bi = i; } }
+        return (x - pts[bi][0])*tan[bi][1] - (z - pts[bi][1])*tan[bi][0] >= 0 ? 1 : -1; };
+      // the centreline point nearest (x,z), its (fractional) index and the direction of flow there
+      const at = (x,z) => { let bi = 0, bd = 1e18; for (let i=0;i<N;i++){ const d = (pts[i][0]-x)**2 + (pts[i][1]-z)**2; if (d < bd){ bd = d; bi = i; } }
+        let best = null; for (const i of [bi-1, bi]){ if (i < 0 || i >= N-1) continue;
+          const [x1,z1] = pts[i], [x2,z2] = pts[i+1], dx = x2-x1, dz = z2-z1, t = Math.max(0, Math.min(1, ((x-x1)*dx + (z-z1)*dz)/(dx*dx+dz*dz))), px = x1+dx*t, pz = z1+dz*t, d = (px-x)**2 + (pz-z)**2;
+          if (!best || d < best.d){ const l = Math.hypot(dx,dz); best = {d, i:i+t, x:px, z:pz, tx:dx/l, tz:dz/l}; } }
+        return best; };
+      const poly = [...pts.map((_,i) => off(i, RIV_W)), ...pts.map((_,i) => off(i, -RIV_W)).reverse()];
+      return {pts, tan, N, off, offAt, dist, side, at, poly, inside:(x,z,pad=0) => nearest(x,z)[1] < RIV_W + pad};
+    })();
+    { const sh = new THREE.Shape([[-3600,-2700],[6600,-2700],[6600,3500],[-3600,3500]].map(([x,z]) => new THREE.Vector2(x,-z)));
+      sh.holes.push(new THREE.Path(RIVER.poly.map(([x,z]) => new THREE.Vector2(x,-z))));
+      const gnd = new THREE.Mesh(new THREE.ShapeGeometry(sh), std(0xffffff,{map:slabTex,roughness:.95})); wetMats.push(gnd.material); gnd.rotation.x = -Math.PI/2; fsc.add(gnd);
+      const m = new THREE.Mesh(new THREE.ShapeGeometry(new THREE.Shape(RIVER.poly.map(([x,z]) => new THREE.Vector2(x,-z)))), water); m.rotation.x = -Math.PI/2; m.position.y = WATER_Y; fsc.add(m);
+      // the granite river walls down to the water, on both banks
+      const wallG = mgrp(std(0x8f897d,{roughness:.9}), 0, 0, 1e5);
+      for (const sd of [1,-1]) for (let i=0;i<RIVER.N-1;i++){ const a = RIVER.off(i, sd*RIV_W), b = RIVER.off(i+1, sd*RIV_W), t = RIVER.tan[i], L = Math.hypot(b[0]-a[0], b[1]-a[1])/6;
+        quad(wallG, [a[0],WATER_Y-1.5,a[1]], [b[0],WATER_Y-1.5,b[1]], [b[0],0,b[1]], [a[0],0,a[1]], [-sd*t[1], 0, sd*t[0]], [0,0, L,0, L,1, 0,1]); } }
     // parks: grass laid with world-scaled UVs so the texture keeps its size
     // what the minimap draws besides buildings and roads: parks, squares and the lake
-    const MAP = {greens:[], plazas:[], lake:{x:-520, z:330, rx:260, ry:40, rot:.37}};
+    const MAP = {greens:[], plazas:[], lakes:[{x:-522, z:433, rx:260, ry:40, rot:-.37}]};
     const lawn = (w,d,x,z,rot=0) => { MAP.greens.push({x,z,w,d,rot}); const m = flat(w,d,grass,x,z,.03,rot); const uv = m.geometry.attributes.uv; for (let i=0;i<uv.count;i++) uv.setXY(i, uv.getX(i)*w, uv.getY(i)*d); return m; };
-    const PARK_SJ = {x:-560, z:300, w:800, d:330, rot:-.37};
+    const PARK_SJ = {x:-555, z:445, w:760, d:330, rot:.363};   // parallel to The Mall, on its south side
     lawn(PARK_SJ.w,PARK_SJ.d,PARK_SJ.x,PARK_SJ.z,PARK_SJ.rot);                  // St James's Park
-    { const lake = new THREE.Mesh(new THREE.CircleGeometry(1,48), water); lake.scale.set(260,40,1); lake.rotation.set(-Math.PI/2,0,.37); lake.position.set(-520,.06,330); fsc.add(lake);
+    { const lake = new THREE.Mesh(new THREE.CircleGeometry(1,48), water); lake.scale.set(260,40,1); lake.rotation.set(-Math.PI/2,0,.37); lake.position.set(-522,.06,433); fsc.add(lake);
       const uv = lake.geometry.attributes.uv; for (let i=0;i<uv.count;i++) uv.setXY(i, uv.getX(i)*260, uv.getY(i)*80); }
-    lawn(420,560,-1130,20);                                                     // Green Park
+    lawn(420,560,-1130,20); lawn(126,560,-1403,20);                             // Green Park, out to Piccadilly
     lawn(380,470,-1230,620);                                                    // palace gardens
     lawn(110,95,115,945);                                                       // Parliament Square
     flat(180,240,std(0xd8c9a0,{roughness:1}),-55,250,.025); MAP.plazas.push({x:-55,z:250,w:180,d:240,rot:0,col:'#9c8a62'});                     // Horse Guards Parade
@@ -1981,7 +2083,6 @@ function buildScene(){
       building(70,1085,120,30,30,palace); for (const dz of [-9,9]) fb(12,68,12,st2,4,34,1085+dz);
       fb(10,18,10,st2,95,39,1085); }
     // Westminster Bridge, the London Eye and County Hall on the South Bank
-    fb(272,2,26,std(0x3e6a55),bankX(965)+130,6,965); fb(272,2.5,26,std(0x2c4a3e),bankX(965)+130,4.2,965);
     { const eye = new THREE.Group(); eye.position.set(bankX(860)+300, 70, 860); eye.rotation.y = Math.PI/2 - .3; fsc.add(eye);
       const wm = std(0xf2f4f6,{metalness:.5,roughness:.4,emissive:0x6a7cff,emissiveIntensity:0}); floodMats.push([wm,.9]);
       eye.add(new THREE.Mesh(new THREE.TorusGeometry(63,.8,8,96), wm)); eye.add(new THREE.Mesh(new THREE.TorusGeometry(60,.4,6,96), wm));
@@ -2048,7 +2149,6 @@ function buildScene(){
       fb(130,.1,.1,goldM,0,2.9,54,g); }
 
     /* ---- roads: tarmac with UK markings, granite kerbs and lamp posts ---- */
-    const segDist = (x,z,x1,z1,x2,z2) => { const dx=x2-x1, dz=z2-z1, t=Math.max(0,Math.min(1,((x-x1)*dx+(z-z1)*dz)/(dx*dx+dz*dz))); return Math.hypot(x-x1-t*dx, z-z1-t*dz); };
     // one texture tile is 24 m of road; u runs kerb to kerb
     const tarmacTex = (lanes, base) => { const t = srgb(canvasTex(256,512,(g,w,h)=>{
       g.fillStyle = base; g.fillRect(0,0,w,h);
@@ -2066,10 +2166,10 @@ function buildScene(){
     const roads = [], buckets = new Map(), BK = 100; let roadY = .05, mainN = 0;
     const bucket = (i,j) => { const k = i*10007 + j; if (!buckets.has(k)) buckets.set(k, []); return buckets.get(k); };
     function road(x1,z1,x2,z2,w,mat,layer){
-      const dx = x2-x1, dz = z2-z1, len = Math.hypot(dx,dz), geo = new THREE.PlaneGeometry(w,len), uv = geo.attributes.uv;
-      for (let i=0;i<uv.count;i++) uv.setY(i, uv.getY(i)*len/24);
+      const dx = x2-x1, dz = z2-z1, len = Math.hypot(dx,dz), px = -dz/len*w/2, pz = dx/len*w/2;
       roadY = layer ?? (.08 + (mainN++ % 3)*.008);
-      const m = new THREE.Mesh(geo, mat); m.rotation.set(-Math.PI/2, 0, Math.atan2(dx,dz) + Math.PI); m.position.set((x1+x2)/2, roadY, (z1+z2)/2); fsc.add(m);
+      const g = mgrp(mat, (x1+x2)/2, (z1+z2)/2, 600, '|' + roadY); g.flat = true; g.far = 2600;
+      quad(g, [x1-px,roadY,z1-pz], [x1+px,roadY,z1+pz], [x2+px,roadY,z2+pz], [x2-px,roadY,z2-pz], [0,1,0], [0,0, 1,0, 1,len/24, 0,len/24]);
       const ri = roads.push({x1,z1,x2,z2,w,len,y:roadY,mall:mat === MALL}) - 1;
       // spatial index so kerb and tree placement only test nearby roads
       const pad = w/2 + 2;
@@ -2088,36 +2188,417 @@ function buildScene(){
     road(60,905,bankX(965)-8,962,16,TARMAC4);         // Bridge Street to Westminster Bridge
     road(bankX(965)-8,962,bankX(965)+270,962,16,TARMAC4);
     road(28,880,205,880,12,TARMAC2); road(28,1012,205,1012,12,TARMAC2); road(28,880,28,1012,12,TARMAC2); road(205,880,205,1012,12,TARMAC2);   // Parliament Square
-    for (let z=-600; z<1400; z+=100) road(bankX(z)-14, z, bankX(z+100)-14, z+100, 16, TARMAC4);   // Victoria Embankment
     // Soho's edges: Oxford Street, Regent Street, Shaftesbury Avenue, Coventry Street, Haymarket, Piccadilly, and Charing
     // Cross Road on to St Giles Circus. Five of them meet at Piccadilly Circus (-465,-277).
     const PICC = {x:-465, z:-277};
-    road(-1500,-1000,400,-1000,16,TARMAC4);           // Oxford Street and New Oxford Street
     road(PICC.x,PICC.z,-1010,-1000,16,TARMAC4);       // Regent Street, up to Oxford Circus
     road(PICC.x,PICC.z,0,-700,14,TARMAC2);            // Shaftesbury Avenue, to Cambridge Circus
     road(PICC.x,PICC.z,0,-285,14,TARMAC2);            // Coventry Street and Cranbourn Street
     road(-445,-81,PICC.x,PICC.z,14,TARMAC2);          // Haymarket
-    road(PICC.x,PICC.z,-1500,-300,16,TARMAC4);        // Piccadilly
     road(0,-700,0,-1000,14,TARMAC2);                  // Charing Cross Road, on to St Giles Circus
     const regentX = z => PICC.x + (z - PICC.z)*.754;   // Regent Street's line, north of the Circus
     const inSoho = (x,z,r=0) => z > -1000 - r && z < -135 + r && x < r && x > (z < PICC.z ? regentX(z) : -445) - r;
 
+
+    /* ================= Greater London: east to St Paul's and the Tower, west to Mayfair, Belgravia and Victoria ================= */
+    // Real places sit where they are in London, scaled like the rest of the map; heights and footprints follow the real
+    // buildings. Each landmark is built from simple parts in a group and merged per material (bakeGroup).
+    // carved stone for the big landmarks, 12 m to a tile like the facades: kind 'wren' (paired pilasters, round-arched
+    // windows over rusticated stone) or 'gothic' (pale ashlar with tall pointed lancets); lit windows glow at night
+    const stoneTex = (kind, base) => { const t = srgb(canvasTex(256,256,(q,w,h)=>{ q.fillStyle = base; q.fillRect(0,0,w,h);
+        for (let i=0;i<1800;i++){ q.fillStyle = rand() < .5 ? 'rgba(0,0,0,.035)' : 'rgba(255,255,255,.05)'; q.fillRect(rand()*w, rand()*h, 3, 2); }
+        q.fillStyle = 'rgba(0,0,0,.07)'; for (let y=0;y<h;y+=kind === 'wren' ? 11 : 16) q.fillRect(0,y,w,1);
+        if (kind === 'wren'){ q.fillStyle = 'rgba(255,255,255,.22)'; q.fillRect(0,124,w,8); q.fillRect(0,4,w,6);
+          for (const x of [0,128]){ for (const dx of [6,26]){ q.fillStyle='rgba(0,0,0,.1)'; q.fillRect(x+dx,0,12,h); q.fillStyle='rgba(255,255,255,.16)'; q.fillRect(x+dx+2,0,4,h); } }
+          q.fillStyle = '#3a4048'; for (const x of [70,198]){ q.fillRect(x-14,158,28,64); q.beginPath(); q.arc(x,158,14,Math.PI,0); q.fill(); q.fillRect(x-12,40,24,50); q.beginPath(); q.arc(x,40,12,Math.PI,0); q.fill(); } }
+        else { q.fillStyle = '#323840'; for (const x of [32,96,160,224]) for (const y of [36,150]){ q.fillRect(x-7,y,14,60); q.beginPath(); q.moveTo(x-7,y); q.lineTo(x,y-14); q.lineTo(x+7,y); q.fill(); }
+          q.fillStyle = 'rgba(255,255,255,.2)'; q.fillRect(0,120,w,6); } }));
+      t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(.8,.8); return std(0xffffff,{map:t, roughness:.85, emissive:0xffcf8a, emissiveIntensity:0}); };   // 15 m to a tile: two grand storeys
+    const GL = {portland:std(0xe6dfcf,{roughness:.85,emissive:0xffcf8a,emissiveIntensity:0}), lead:std(0x7b8086,{metalness:.25,roughness:.55}),
+      rag:std(0xcbc2ad,{roughness:.95}), ragDark:std(0x9d9480,{roughness:.95}), white:std(0xeee8da,{roughness:.8,emissive:0xffcf8a,emissiveIntensity:0}),
+      iron:std(0x2a2d33,{metalness:.6,roughness:.4}), concrete:std(0xc9c5bb,{roughness:.9}), granite:std(0x8a857c,{roughness:.9}),
+      blue:std(0x86b8e0,{metalness:.3,roughness:.5}), slate:std(0x4e5660,{roughness:.7}), marble:std(0xf4f2ec,{roughness:.6}), bronze:std(0x4a3f2c,{metalness:.6,roughness:.4})};
+    GL.wren = stoneTex('wren','#e4ddcc'); GL.gothic = stoneTex('gothic','#ddd6c6');
+    floodMats.push([GL.portland,.32], [GL.white,.35], [GL.wren,.3], [GL.gothic,.3]);
+    const cyl = (r1,r2,h,n,mat,x,y,z,g,o={}) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(r1,r2,h,n,1,!!o.open,o.t0||0,o.tl||Math.PI*2), mat); m.position.set(x,y,z); if (o.ry) m.rotation.y = o.ry; g.add(m); return m; };
+    const dome = (r,ky,mat,x,y,z,g,n=24) => { const m = new THREE.Mesh(new THREE.SphereGeometry(r,n,Math.max(6,n/2),0,Math.PI*2,0,Math.PI/2), mat); m.scale.y = ky; m.position.set(x,y,z); g.add(m); return m; };
+    const ubox = (g, x,y,z,w,h,d,mat) => { const m = new THREE.Mesh(boxUV(w,h,d), mat); m.position.set(x,y,z); g.add(m); return m; };
+    // a box in a world-space group: keeps its facade's 12 m scale, collides, and gets the usual plinth and cornice
+    const gbox = (g, x,z,w,d,h,mat,y0=0) => { const m = ubox(g, x,y0+h/2,z, w,h,d, mat); if (y0 < 2){ cityCol.push([x-w/2,z-d/2,x+w/2,z+d/2]); if (h > 9) trims.push([x,z,w,d,h,0,false]); } return m; };
+    const prism = (w,h,d,mat,x,y,z,g,ry=0) => { const geo = new THREE.ExtrudeGeometry(new THREE.Shape([new THREE.Vector2(-w/2,0), new THREE.Vector2(w/2,0), new THREE.Vector2(0,h)]), {depth:d, bevelEnabled:false});
+      geo.translate(0,0,-d/2); const m = new THREE.Mesh(geo, mat); m.position.set(x,y,z); m.rotation.y = ry; g.add(m); return m; };
+    const scaleUV = (geo, su, sv) => { const uv = geo.attributes.uv; for (let i=0;i<uv.count;i++) uv.setXY(i, uv.getX(i)*su, uv.getY(i)*sv); return geo; };
+    const keepOut = (x1,z1,x2,z2) => { zones.push([x1,z1,x2,z2]); noTree.push([x1,z1,x2,z2]); };
+    // a rotated footprint that collides and keeps the grid and trees away
+    const solidOBB = (cx,cz,hw,hd,yaw) => { const c = Math.cos(yaw), s = Math.sin(yaw); obbs.push([cx,cz,hw,hd,c,s]);
+      const ex = hw*Math.abs(c) + hd*Math.abs(s), ez = hw*Math.abs(s) + hd*Math.abs(c); keepOut(cx-ex-4, cz-ez-4, cx+ex+4, cz+ez+4); };
+    const MORE_LM = [];   // telescope and minimap landmarks, added to LANDMARKS below
+    const lm = (name, x, y, z, size, desc, o={}) => MORE_LM.push(Object.assign({name, at:new THREE.Vector3(x,y,z), size, desc}, o));
+    const extraTrees = [];
+    // a point `d` metres from the river's centreline (d > 0 on the north/west bank) beside (x,z), and the river's direction there
+    const bankAt = (x, z, d) => { const c = RIVER.at(x, z), [bx, bz] = RIVER.offAt(c.i, d); return {x:bx, z:bz, tx:c.tx, tz:c.tz, lx:c.tz, lz:-c.tx, i:c.i, yaw:Math.atan2(-c.tz, c.tx)}; };
+    const roadLine = (pts, w, mat=TARMAC4) => { for (let k=0;k<pts.length-1;k++) road(pts[k][0],pts[k][1],pts[k+1][0],pts[k+1][1],w,mat); };
+
+    /* ---- Underground stations ---- */
+    const STATIONS = [];
+    const roundelTex = name => srgb(canvasTex(256,256,(g,w,h)=>{ g.clearRect(0,0,w,h); g.strokeStyle='#dc241f'; g.lineWidth=42; g.beginPath(); g.arc(128,128,86,0,Math.PI*2); g.stroke();
+      g.fillStyle='#0019a8'; g.fillRect(6,103,244,50); g.fillStyle='#fff'; g.textAlign='center'; let f = 27; g.font = `700 ${f}px Arial,sans-serif`;
+      while (g.measureText(name).width > 226 && f > 12){ f--; g.font = `700 ${f}px Arial,sans-serif`; } g.fillText(name, 128, 128 + f*.37); }));
+    const stStone = PORTLAND, stGlass = std(0x1d2733,{metalness:.6,roughness:.15}), stLit = std(0xf2ead6,{emissive:0x5a5440}), stPost = std(0x15171b,{metalness:.5,roughness:.4});
+    // an entrance whose door is at (x,z), facing yaw: a stone pavilion (unless it's set in a bigger building), the red-ring,
+    // blue-bar sign, a bar naming the lines, and a roundel on a post by the door
+    function station(name, lines, x, z, yaw, o={}){
+      const W = o.w || 16, D = o.d || 9, H = o.h || 6.5, g = new THREE.Group(), c = Math.cos(yaw), sn = Math.sin(yaw);
+      g.position.set(x,0,z); g.rotation.y = yaw;
+      if (!o.noBody){ ubox(g, 0,H/2,-D/2, W,H,D, o.mat || stStone); box(W+.8,.5,D+.8,stoneDark,0,H+.25,-D/2,g); solidOBB(x - D/2*sn, z - D/2*c, W/2, D/2, yaw); }
+      box(6.4,3.4,.14,stLit,0,1.7,.03,g); box(5.6,3,.16,stGlass,0,1.5,.08,g);
+      const rm = new THREE.MeshBasicMaterial({map:roundelTex(name.toUpperCase()), transparent:true, side:THREE.DoubleSide});
+      const r = new THREE.Mesh(new THREE.PlaneGeometry(2.4,2.4), rm); r.position.set(0,Math.max(5.1,H-1.4),.12); g.add(r);
+      const lt = srgb(canvasTex(512,48,(q,w,h)=>{ q.fillStyle='#0019a8'; q.fillRect(0,0,w,h); q.fillStyle='#fff'; q.font='700 21px Arial,sans-serif'; q.textAlign='center'; q.fillText(lines,w/2,31,w-12); }));
+      const l = new THREE.Mesh(new THREE.PlaneGeometry(5.6,.48), new THREE.MeshBasicMaterial({map:lt})); l.position.set(0,3.7,.12); g.add(l);
+      const px = W/2 + 2, pz = 3; cyl(.09,.11,3.6,10,stPost,px,1.8,pz,g);
+      const r2 = new THREE.Mesh(new THREE.PlaneGeometry(1.6,1.6), rm); r2.position.set(px,4.2,pz); r2.rotation.y = -Math.PI/4; g.add(r2);
+      const qx = x + px*c + pz*sn, qz = z - px*sn + pz*c; cityCol.push([qx-.2,qz-.2,qx+.2,qz+.2]);
+      bakeGroup(g, 2400);
+      const dx = x + 2*sn, dz = z + 2*c; STATIONS.push({name, lines, x:dx, z:dz});
+      lm(name + ' Station', dx, 4, dz, 32, o.desc || lines + '.', Object.assign({tube:true}, o.lm)); }
+
+    /* ---- the bridges ---- */
+    // Each is a deck at street level from bank to bank on piers, with arches under it; Tommy can walk across, and the
+    // road ones carry traffic. Westminster Bridge keeps its own road from the Parliament Square side.
+    const BRIDGES = [];
+    function bridge(x, z, o){
+      const c = RIVER.at(x, z), ux = c.tz, uz = -c.tx, hl = RIV_W + 12, W = o.w, g = new THREE.Group(), yaw = Math.atan2(ux, uz);
+      g.position.set(c.x, 0, c.z); g.rotation.y = yaw;    // local +z runs across the river to the north bank, +x across the deck
+      box(W, .3, 2*hl, o.deck || paving, 0, -.13, 0, g);
+      box(W-.6, 1.4, 2*hl, o.fascia || GL.concrete, 0, -.98, 0, g);
+      if (o.par !== false) for (const sx of [-1,1]) box(.5, 1.1, 2*hl, o.par || o.fascia || GL.concrete, sx*(W/2-.25), .57, 0, g);
+      const n = o.spans || 0, sl = 2*RIV_W/Math.max(1,n), pt = o.pierT || 5;
+      for (let k=1;k<n;k++) box(W+1.5, 9, pt, o.pier || GL.granite, 0, -6.2, -RIV_W + k*sl, g);
+      if (o.rise) for (let k=0;k<n;k++){ const R = sl/2 - pt/2, geo = new THREE.TorusGeometry(R, o.archT || .7, 6, 20, Math.PI);
+        for (const sx of [-1,1]){ const a = new THREE.Mesh(geo, o.arch || o.fascia || GL.concrete); a.rotation.y = Math.PI/2; a.scale.y = o.rise/R; a.position.set(sx*(W/2-.6), -1.7 - o.rise, -RIV_W + (k+.5)*sl); g.add(a); } }
+      if (o.extra) o.extra(g, hl, W);
+      bakeGroup(g);
+      const b = {x:c.x, z:c.z, ux, uz, yaw, hl:RIV_W+14, hw:W/2-.8, walk:o.walk !== false, i:c.i,
+        s:[c.x - ux*(RIV_W+14), c.z - uz*(RIV_W+14)], n:[c.x + ux*(RIV_W+14), c.z + uz*(RIV_W+14)]};
+      BRIDGES.push(b); if (o.road) road(b.s[0], b.s[1], b.n[0], b.n[1], o.road, TARMAC4);
+      return b; }
+    // Westminster Bridge (1862): seven shallow cast-iron arches, painted green like the Commons' benches
+    { const wg = std(0x3e6a55,{metalness:.3,roughness:.5}); bridge(bankX(965)+130, 962, {w:26, spans:7, rise:4.5, archT:.8, fascia:wg, arch:wg, par:wg}); }
+    // Hungerford Bridge: the railway into Charing Cross between the two Golden Jubilee footbridges and their white pylons
+    const HB = bridge(575, 130, {w:30, spans:8, pierT:4, fascia:GL.iron, par:GL.white, extra:(g, hl, W) => {
+      box(9,.3,2*hl,GL.iron,0,.17,0,g); for (const sx of [-1,1]) box(.5,4,2*hl,GL.iron,sx*4.7,2.2,0,g);
+      const lines = [];
+      for (let k=1;k<8;k++){ const z = -RIV_W + k*2*RIV_W/8; for (const sx of [-1,1]){ const m = cyl(.32,.5,26,8,GL.white,sx*(W/2+3.6),12.6,z,g); m.rotation.z = -sx*.2;
+        const tx = sx*(W/2+6.2), ty = 25.4; for (const dz of [-14,-7,7,14]) lines.push(tx,ty,z, sx*(W/2-.4),.8,z+dz); } }
+      const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.Float32BufferAttribute(lines,3)); g.add(new THREE.LineSegments(lg, new THREE.LineBasicMaterial({color:0xe8ecef}))); }});
+    obbs.push([HB.x, HB.z, 5.2, HB.hl - 2, Math.cos(HB.yaw), Math.sin(HB.yaw)]);   // the railway down the middle
+    // Waterloo Bridge (1945): five long, flat concrete spans clad in Portland stone
+    const WB = bridge(951, -65, {w:26, road:16, spans:5, rise:3.2, fascia:GL.concrete, arch:GL.concrete, pier:GL.concrete, par:GL.concrete});
+    // Blackfriars Bridge (1869): five wrought-iron arches, red and cream; beside it the railway bridge carrying Blackfriars station,
+    // the platforms spanning the whole river under a roof of solar panels
+    const ironRed = std(0x8c2a24,{metalness:.4,roughness:.5}), cream = std(0xe8dcc0,{roughness:.8});
+    const BF = bridge(1905, -215, {w:32, road:20, spans:5, rise:6, archT:1, fascia:ironRed, arch:ironRed, par:cream});
+    const BFR = bridge(1968, -212, {w:36, walk:false, spans:5, rise:0, fascia:GL.iron, pier:ironRed, par:false, extra:(g, hl, W) => {
+      const solar = std(0x1d2a4a,{metalness:.6,roughness:.25}), glazing = std(0x5b6b78,{metalness:.5,roughness:.25});
+      box(W-6,6.5,2*RIV_W-24,glazing,0,3.25,0,g); box(W-2,.5,2*RIV_W-16,GL.iron,0,6.75,0,g);
+      for (let z=-RIV_W+18; z<RIV_W-12; z+=9){ const p = box(W-2,.25,7.6,solar,0,7.8,z,g); p.rotation.x = .3; } }});
+    // the Millennium Bridge (2000): a thin steel footbridge on low cables, lined up with St Paul's
+    const MB = bridge(2372, -150, {w:5, spans:3, pierT:3, deck:std(0xc4c9cf,{metalness:.6,roughness:.3}), fascia:std(0xaab0b6,{metalness:.6,roughness:.35}), pier:GL.concrete, par:std(0xd5dadf,{metalness:.6,roughness:.3}), extra:(g, hl) => {
+      const steel = std(0xb8bec4,{metalness:.7,roughness:.3});
+      for (const z of [-RIV_W/3, RIV_W/3]) box(18,.6,1.2,steel,0,-.7,z,g);
+      for (const sx of [-1,1]){ const pts = []; for (let k=0;k<=12;k++){ const z = -hl + k*2*hl/12, f = Math.abs(z) < RIV_W/3 ? Math.cos(z/(RIV_W/3)*Math.PI/2) : Math.cos((Math.abs(z)-RIV_W/3)/(hl-RIV_W/3)*Math.PI/2); pts.push(new THREE.Vector3(sx*8.6, -.8 - f*1.4, z)); }
+        g.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 48, .32, 6, false), steel)); }
+      for (let z=-hl+6; z<hl; z+=8) box(17.4,.25,.35,steel,0,-.9,z,g); }});
+    // Southwark Bridge (1921): three steel arches, green with yellow
+    const sGreen = std(0x3d6b4a,{metalness:.4,roughness:.5});
+    const SB = bridge(2711, -65, {w:20, road:12, spans:3, rise:5, archT:.9, fascia:sGreen, arch:sGreen, par:std(0xd8b44a,{metalness:.3,roughness:.5})});
+    // London Bridge (1973): three plain concrete spans
+    const LB = bridge(3228, 38, {w:32, road:20, spans:3, rise:2.5, fascia:GL.concrete, arch:GL.concrete, pier:GL.concrete, par:std(0x9ea3a8,{roughness:.6})});
+
+    /* ---- the Tower of London ---- */
+    // William the Conqueror's White Tower (1070s) inside two rings of walls and towers; the moat is lawns now. Like the
+    // real one it lines up with the river, so it's built turned to the river's direction, with rotated collisions.
+    const TOW = bankAt(4090, 300, RIV_W + 172);
+    const towW = (lx, lz) => [TOW.x + lx*Math.cos(TOW.yaw) + lz*Math.sin(TOW.yaw), TOW.z - lx*Math.sin(TOW.yaw) + lz*Math.cos(TOW.yaw)];
+    { const g = new THREE.Group(); g.position.set(TOW.x, 0, TOW.z); g.rotation.y = TOW.yaw;   // local +x downstream, +z towards the river
+      const R = GL.rag, D = GL.ragDark, castle = facadeOf('#cbc2ad','#2f343a','#b7ad97');
+      const whiteTex = srgb(canvasTex(256,256,(q,w,h)=>{ q.fillStyle='#ebe5d4'; q.fillRect(0,0,w,h);
+        for (let i=0;i<1600;i++){ q.fillStyle = rand() < .5 ? 'rgba(0,0,0,.04)' : 'rgba(255,255,255,.05)'; q.fillRect(rand()*w, rand()*h, 3, 2); }
+        for (const x of [0,128]){ q.fillStyle='rgba(0,0,0,.08)'; q.fillRect(x,0,14,h); q.fillStyle='rgba(255,255,255,.14)'; q.fillRect(x+2,0,4,h); }
+        q.fillStyle='#2a2d31'; for (const y of [70,170]) for (const x of [54,182]){ q.fillRect(x,y,20,30); q.beginPath(); q.arc(x+10,y,10,Math.PI,0); q.fill(); } }));
+      whiteTex.wrapS = whiteTex.wrapT = THREE.RepeatWrapping;
+      const WT = std(0xffffff,{map:whiteTex,roughness:.85});
+      const wall = (x1,z1,x2,z2,h,t,mat) => { const len = Math.hypot(x2-x1,z2-z1), alongX = Math.abs(x2-x1) > Math.abs(z2-z1);
+        ubox(g, (x1+x2)/2, h/2, (z1+z2)/2, alongX ? len : t, h, alongX ? t : len, mat);
+        for (let s=1.2; s<len-1; s+=2.4){ const f = s/len; box(alongX ? 1.3 : t+.3, 1.3, alongX ? t+.3 : 1.3, mat, x1+(x2-x1)*f, h+.65, z1+(z2-z1)*f, g); } };
+      const ring = (hx, hz, h, t, mat) => { wall(-hx,-hz,hx,-hz,h,t,mat); wall(-hx,hz,hx,hz,h,t,mat); wall(-hx,-hz,-hx,hz,h,t,mat); wall(hx,-hz,hx,hz,h,t,mat); };
+      const round = (x,z,r,h,mat) => { cyl(r,r*1.05,h,16,mat,x,h/2,z,g); for (let k=0;k<12;k++){ const a = k/12*Math.PI*2; box(1.3,1.3,1.3,mat,x+Math.cos(a)*(r-.5),h+.65,z+Math.sin(a)*(r-.5),g); } };
+      const square = (x,z,w,d,h,mat) => { ubox(g, x,h/2,z, w,h,d, castle); for (const [a,b,c2,d2] of [[-w/2,-d/2,w/2,-d/2],[-w/2,d/2,w/2,d/2],[-w/2,-d/2,-w/2,d/2],[w/2,-d/2,w/2,d/2]])
+        for (let s=.8, L = Math.hypot(c2-a,d2-b); s<L; s+=2.2) box(1.1,1.2,1.1,mat,x+a+(c2-a)*s/L,h+.6,z+b+(d2-b)*s/L,g); };
+      // the outer curtain wall, its bastions, the Byward and Middle Towers on the way in, and St Thomas's Tower over Traitors' Gate
+      ring(150, 120, 9, 3, R);
+      for (const [x,z] of [[-150,-120],[150,-120],[150,120],[-150,120]]) round(x,z,9,11,R);
+      for (const dx of [-7,7]){ round(-132+dx,114,5,14,R); round(-174+dx,108,4.5,12,R); }
+      box(30,1,10,D,-153,.5,108,g);                                                     // the causeway over the moat
+      square(-40,121,34,12,14,R); { const tg = new THREE.Mesh(new THREE.PlaneGeometry(11,7), std(0x1b1d20)); tg.position.set(-40,3.5,127.1); g.add(tg); }
+      // the inner curtain wall and its thirteen towers (Bloody, Wakefield, Beauchamp, Salt, Martin...)
+      ring(118, 92, 13, 3.5, R);
+      for (const [x,z,r] of [[-118,-92,7],[118,-92,7],[118,92,7.5],[-118,92,7],[60,92,6],[-30,92,10]]) round(x,z,r,17,R);
+      for (const [x,z,w,d] of [[-60,-92,12,10],[-10,-92,12,10],[50,-92,12,10],[118,-35,10,12],[118,35,10,12],[-60,92,12,12],[-118,0,10,16]]) square(x,z,w,d,16,R);
+      // the White Tower: four corner turrets (one round) under ogee lead caps and gilded vanes
+      { const wx0 = 10, wz0 = 0; ubox(g, wx0,13.5,wz0, 36,27,32, WT);
+        for (let s=1; s<136; s+=2.4){ const e = s < 36 ? [s-18,-16] : s < 68 ? [18,s-36-16] : s < 104 ? [18-(s-68),16] : [-18,16-(s-104)]; box(1.3,1.4,1.3,WT,wx0+e[0],27.7,wz0+e[1],g); }
+        const cap = new THREE.LatheGeometry([[4.8,0],[5.3,1],[5,2.6],[3.4,4.6],[1.4,6.2],[.4,7.4],[0,7.8]].map(([r,y]) => new THREE.Vector2(r,y)), 14);
+        for (const [sx,sz] of [[-1,-1],[1,-1],[1,1],[-1,1]]){ const tx = wx0 + sx*18, tz = wz0 + sz*16;
+          if (sx > 0 && sz < 0) cyl(4.6,4.6,35,16,WT,tx,17.5,tz,g); else ubox(g, tx,17.5,tz, 8,35,8, WT);
+          const m = new THREE.Mesh(cap, GL.lead); m.position.set(tx,35,tz); g.add(m); box(.14,2.4,.14,goldM,tx,44,tz,g); box(1.1,.5,.06,goldM,tx+.55,44.6,tz,g); } }
+      // the Waterloo Block, home of the Crown Jewels, along the inner ward's north side
+      ubox(g, 0,8,-70, 110,16,18, castle); for (let x=-54; x<55; x+=2.4) for (const z of [-79,-61]) box(1.2,1.2,1.2,R,x,16.6,z,g);
+      bakeGroup(g);
+      lawn(360,30,...towW(0,-135),TOW.yaw); lawn(360,30,...towW(0,135),TOW.yaw); lawn(30,300,...towW(-165,0),TOW.yaw); lawn(30,300,...towW(165,0),TOW.yaw);   // the moat
+      lawn(46,40,...towW(-70,20),TOW.yaw);                                                                                                        // Tower Green
+      solidOBB(TOW.x, TOW.z, 182, 152, TOW.yaw);
+      const [cx, cz] = towW(10, 0); lm('Tower of London', cx, 30, cz, 280, "William the Conqueror's fortress by the river. The White Tower dates from the 1070s, and the Crown Jewels are kept here, guarded by the Yeoman Warders.", {major:true}); }
+
+    // Tower Bridge (1894): the bascule roadway between two Gothic towers, joined high up by walkways, with blue suspension
+    // chains swinging down to the shore towers
+    const TB = (() => { const [x, z] = towW(262, 302); return bridge(x, z, {w:24, road:12, fascia:GL.blue, par:GL.blue, extra:(g, hl) => {
+      const S = std(0xdcd5c4,{roughness:.8}), facade = GL.gothic;
+      for (const tz of [-40,40]){
+        box(38,9,30,GL.granite,0,-6.2,tz,g);                                                 // the pier in the river
+        for (const sx of [-1,1]) ubox(g, sx*14.2,7,tz, 4,14,18, facade);                      // the legs either side of the road
+        ubox(g, 0,29,tz, 32,30,18, facade); box(26,.6,18.4,S,0,14.3,tz,g);                    // the tower over the road arch
+        box(30,10,16,S,0,49,tz,g);
+        for (const sx of [-1,1]) for (const sz of [-1,1]){ cyl(2.3,2.3,22,8,S,sx*14,47,tz+sz*7.8,g);
+          const c = new THREE.Mesh(new THREE.ConeGeometry(2.9,7,8), GL.slate); c.position.set(sx*14,61.5,tz+sz*7.8); g.add(c); cyl(.12,.3,3,6,goldM,sx*14,66.5,tz+sz*7.8,g); }
+        const roof = new THREE.Mesh(new THREE.ConeGeometry(15,12,4), GL.slate); roof.rotation.y = Math.PI/4; roof.position.set(0,60,tz); g.add(roof); cyl(.2,.5,6,6,goldM,0,69,tz,g); }
+      for (const sx of [-1,1]){ box(3.2,5,62,GL.blue,sx*6,42.5,0,g); box(3.4,.4,62,GL.white,sx*6,45.2,0,g); box(3.4,.4,62,GL.white,sx*6,39.8,0,g); }
+      for (const sz of [-1,1]){ const shore = sz*(hl-8);
+        for (const sx of [-1,1]){ ubox(g, sx*14, 9, shore, 5,18,9, facade); const c2 = new THREE.Mesh(new THREE.ConeGeometry(3.6,6,4), GL.slate); c2.rotation.y = Math.PI/4; c2.position.set(sx*14,21,shore); g.add(c2);
+          const curve = new THREE.QuadraticBezierCurve3(new THREE.Vector3(sx*12.6,40,sz*49), new THREE.Vector3(sx*12.6,-20,sz*(49 + (hl-57)*.55)), new THREE.Vector3(sx*12.6,17,shore));
+          g.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 24, 1.1, 6, false), GL.blue));
+          for (let t=.08; t<.95; t+=.07){ const p = curve.getPoint(t); if (p.y > 2.4) box(.25,p.y-1.1,.25,GL.blue,sx*12.6,(p.y+1.1)/2,p.z,g); } } } }}); })();
+    lm('Tower Bridge', TB.x, 40, TB.z, 150, "The Victorian bascule bridge of 1894: its roadway lifts between two Gothic towers, joined high above the river by walkways.", {major:true});
+
+    /* ---- the riverside roads ---- */
+    // Victoria Embankment from Westminster Bridge round to Blackfriars, on as Upper and Lower Thames Street towards the
+    // Tower; on the south bank, Bankside from Waterloo Bridge to Tower Bridge. They break at every bridge so traffic can turn.
+    const riverRoad = (s0, s1, d) => { const stops = [s0, s1, ...BRIDGES.filter(b => b.i > s0 + 1 && b.i < s1 - 1).map(b => b.i)];
+      for (let s = s0 + 4; s < s1 - 2; s += 4) if (!stops.some(t => Math.abs(t - s) < 1.5)) stops.push(s);
+      stops.sort((a,b) => a-b); for (let k=0;k<stops.length-1;k++){ const a = RIVER.offAt(stops[k], d), b = RIVER.offAt(stops[k+1], d); road(a[0],a[1],b[0],b[1],16,TARMAC4); } };
+    const towWest = RIVER.at(...towW(-236, 302)).i;
+    riverRoad(BRIDGES[0].i, towWest, RIV_W + 14);
+    riverRoad(WB.i, TB.i, -(RIV_W + 14));
+    // low granite parapets along both banks, broken where the bridges land
+    { const g = mgrp(std(0xa19b8e,{roughness:.85}), 0, 0, 1e5);
+      for (const sd of [1,-1]) for (let i=0;i<RIVER.N-1;i++){ const m = RIVER.offAt(i+.5, sd*(RIV_W+.4));
+        if (BRIDGES.some(b => { const dx = m[0]-b.x, dz = m[1]-b.z; return Math.abs(dx*b.ux + dz*b.uz) < b.hl + 4 && Math.abs(dx*b.uz - dz*b.ux) < b.hw + 4; })) continue;
+        const a = RIVER.off(i, sd*(RIV_W+.4)), b = RIVER.off(i+1, sd*(RIV_W+.4)), t = RIVER.tan[i], nx = -sd*t[1], nz = sd*t[0], L = Math.hypot(b[0]-a[0], b[1]-a[1])/6;
+        for (const k of [-.3,.3]) quad(g, [a[0]-nx*k,0,a[1]-nz*k], [b[0]-nx*k,0,b[1]-nz*k], [b[0]-nx*k,1,b[1]-nz*k], [a[0]-nx*k,1,a[1]-nz*k], [k < 0 ? -nx : nx, 0, k < 0 ? -nz : nz], [0,0, L,0, L,.2, 0,.2]);
+        quad(g, [a[0]-nx*.3,1,a[1]-nz*.3], [b[0]-nx*.3,1,b[1]-nz*.3], [b[0]+nx*.3,1,b[1]+nz*.3], [a[0]+nx*.3,1,a[1]+nz*.3], [0,1,0], [0,0, L,0, L,.1, 0,.1]); } }
+
+    /* ---- along the Embankment: Embankment station, Cleopatra's Needle, Temple, Blackfriars ---- */
+    { const b = bankAt(HB.x, HB.z, RIV_W + 30); station('Embankment', 'Bakerloo, Circle, District and Northern lines', b.x, b.z, Math.atan2(-b.lx, -b.lz),
+        {w:22, desc:"Bakerloo, Circle, District and Northern lines, at the foot of Hungerford Bridge and the Golden Jubilee footbridges."}); }
+    { const b = bankAt(760, 30, RIV_W + 4.5), g = new THREE.Group(), pink = std(0xb39a88,{roughness:.8});
+      g.position.set(b.x,0,b.z); g.rotation.y = b.yaw;
+      box(4.4,1.2,4.4,GL.granite,0,.6,0,g); box(3.6,3,3.6,GL.granite,0,2.7,0,g);
+      const ob = new THREE.Mesh(new THREE.CylinderGeometry(.95,1.45,20.9,4,1), pink); ob.rotation.y = Math.PI/4; ob.position.y = 14.65; g.add(ob);
+      const py = new THREE.Mesh(new THREE.ConeGeometry(.95,1.6,4), pink); py.rotation.y = Math.PI/4; py.position.y = 25.9; g.add(py);
+      for (const sx of [-1,1]){ box(6,1.4,2.2,GL.granite,sx*8,.7,0,g); box(4.4,1.5,1.5,GL.bronze,sx*8.4,2.15,0,g); box(1.4,1.7,1.4,GL.bronze,sx*6,3.2,0,g); }
+      bakeGroup(g, 2600); lm("Cleopatra's Needle", b.x, 12, b.z, 40, "An Egyptian obelisk carved around 1450 BC, raised on the Victoria Embankment in 1878 between two bronze sphinxes."); }
+    { const b = bankAt(1158, -180, RIV_W + 30); station('Temple', 'Circle and District lines', b.x, b.z, Math.atan2(-b.lx, -b.lz),
+        {w:26, d:10, h:6, desc:"Circle and District lines, on the Embankment by the gardens of the Inner and Middle Temple, home of London's barristers."});
+      const t = bankAt(1330, -205, RIV_W + 75); lawn(230, 56, t.x, t.z, t.yaw);
+      for (let k=-5; k<=5; k++) for (const o of [-20, 20]) extraTrees.push([t.x + t.tx*k*20 + t.lx*o, t.z + t.tz*k*20 + t.lz*o, .95]); }
+    { const b = bankAt(BFR.x, BFR.z, RIV_W + 30); station('Blackfriars', 'Circle and District lines · Thameslink', b.x, b.z, Math.atan2(-b.lx, -b.lz),
+        {w:30, d:12, h:8, mat:std(0x3a4450,{metalness:.4,roughness:.35}), desc:"Circle and District lines and Thameslink trains, on a station that spans the whole river under a roof of solar panels."}); }
+
+    /* ---- the City: Fleet Street, St Paul's, Cheapside and Cannon Street to the Tower ---- */
+    const SPC = {x:2378, z:-699};
+    roadLine([[700,-250],[1000,-420],[1120,-560]], 16);                                     // the Strand, on to Aldwych
+    roadLine([[1120,-560],[1890,-690],[SPC.x-150,-701]], 14);                               // Fleet Street and Ludgate Hill
+    roadLine([[SPC.x-150,-701],[SPC.x-128,-765],[SPC.x+112,-765],[SPC.x+112,-637],[SPC.x-128,-637],[SPC.x-150,-701]], 12);   // St Paul's Churchyard
+    roadLine([[SPC.x+112,-765],[3131,-640]], 14);                                           // Cheapside, to Bank
+    const TH = {a:towW(-215,-172), b:towW(215,-172)};                                       // Tower Hill's two ends
+    roadLine([[SPC.x+112,-637],[3250,-400],[3600,-330],TH.a], 14);                          // Cannon Street, Eastcheap, Great Tower Street
+    road(TH.a[0],TH.a[1],TH.b[0],TH.b[1],16,TARMAC4);                                       // Tower Hill
+    { const e = RIVER.offAt(towWest, RIV_W + 14); road(e[0],e[1],TH.a[0],TH.a[1],14,TARMAC4); }   // Byward Street
+    road(TH.b[0],TH.b[1],TB.n[0],TB.n[1],16,TARMAC4);                                       // Tower Bridge Approach
+    road(3131,-640,LB.n[0],LB.n[1],14,TARMAC4);                                             // King William Street to London Bridge
+    road(BF.n[0],BF.n[1],1890,-690,16,TARMAC4);                                             // New Bridge Street to Ludgate Circus
+    road(BF.n[0],BF.n[1],3131,-640,14,TARMAC2);                                             // Queen Victoria Street to Bank
+    road(WB.n[0],WB.n[1],1000,-420,14,TARMAC2);                                             // Lancaster Place, up to the Strand
+    road(MB.n[0],MB.n[1],SPC.x,-637,8,paving); roads[roads.length-1].ped = true;            // Peter's Hill, for people only
+    // St Paul's Cathedral (Wren, 1675-1710): nave and choir, transepts, the dome on its colonnaded drum, the west towers and portico
+    { const g = new THREE.Group(), S = GL.portland, X = SPC.x, Z = SPC.z, cath = GL.wren;
+      gbox(g, X-21, Z, 142, 37, 30, cath); gbox(g, X, Z, 37, 76, 30, cath);
+      cyl(16,16,26,20,S,X+50,13,Z,g,{t0:0,tl:Math.PI});                                        // the apse
+      for (const sz of [-1,1]) cyl(9,9,20,16,S,X,10,Z+sz*38,g,{t0:sz < 0 ? Math.PI/2 : -Math.PI/2, tl:Math.PI});   // the transept porches
+      cityCol.push([X+50,Z-16,X+66,Z+16],[X-9,Z-47,X+9,Z-38],[X-9,Z+38,X+9,Z+47]);
+      cyl(23,23,4,40,S,X,32,Z,g); cyl(19.5,19.5,14,40,S,X,41,Z,g);
+      for (let k=0;k<32;k++){ const a = k/32*Math.PI*2; cyl(.8,.85,14,10,S,X+Math.cos(a)*22,41,Z+Math.sin(a)*22,g); }
+      cyl(23.6,23.6,2.4,40,S,X,49.2,Z,g); cyl(21.6,21.6,1.2,40,S,X,51,Z,g); cyl(18.6,18.6,9,40,S,X,56,Z,g);
+      const ribs = srgb(canvasTex(512,64,(q,w,h)=>{ q.fillStyle='#6f767e'; q.fillRect(0,0,w,h); q.fillStyle='#8c939b'; for (let x=0;x<w;x+=16) q.fillRect(x,0,3,h); })); ribs.wrapS = THREE.RepeatWrapping;
+      dome(18.4,1.22,std(0xffffff,{map:ribs,metalness:.25,roughness:.55}),X,60.5,Z,g,40);
+      cyl(4.6,4.6,1.2,16,S,X,83,Z,g); cyl(3.4,3.7,12,12,S,X,89.5,Z,g); dome(3.5,1.1,GL.lead,X,95.5,Z,g,16); cyl(.8,1.6,4.5,10,S,X,101.6,Z,g);
+      { const ball = new THREE.Mesh(new THREE.SphereGeometry(1.5,14,10), goldM); ball.position.set(X,105.2,Z); g.add(ball); } box(.45,4.6,.45,goldM,X,108.4,Z,g); box(2.4,.45,.45,goldM,X,109.2,Z,g);
+      for (const sz of [-1,1]){ const tx = X-86, tz = Z + sz*24;
+        gbox(g, tx, tz, 13, 13, 40, cath); cyl(5.2,5.8,13,12,S,tx,46.5,tz,g);
+        for (let k=0;k<8;k++){ const a = k/8*Math.PI*2; cyl(.45,.45,11,8,S,tx+Math.cos(a)*6.4,46,tz+Math.sin(a)*6.4,g); }
+        cyl(6.6,6.6,1.2,16,S,tx,53.4,tz,g); dome(5,1.4,GL.lead,tx,54,tz,g,16); cyl(.25,1.1,5,8,goldM,tx,63.5,tz,g);
+        const pine = new THREE.Mesh(new THREE.SphereGeometry(.9,10,8), goldM); pine.position.set(tx,66.4,tz); g.add(pine); }
+      box(12,1.6,46,S,X-99,.8,Z,g); cityCol.push([X-105,Z-23,X-92,Z+23]);                        // the steps
+      for (const [y,h,pairs,span,r,x] of [[1.6,13,6,30,.8,X-96],[16.8,11,4,22,.7,X-95]]) for (let k=0;k<pairs;k++) for (const dz of [-.95,.95]) cyl(r,r,h,10,S,x,y+h/2,Z - span/2 + k*span/(pairs-1) + dz,g);
+      box(5,2.2,34,S,X-95.5,15.7,Z,g); box(4.6,2,26,S,X-95,28.8,Z,g); prism(28,8,4.5,S,X-95,29.8,Z,g,Math.PI/2);
+      box(3,3.5,3,S,X-128,1.75,Z,g); cyl(.6,.8,2.4,10,GL.white,X-128,4.7,Z,g); cityCol.push([X-129.5,Z-1.5,X-126.5,Z+1.5]);   // Queen Anne
+      bakeGroup(g);
+      for (const sz of [-1,1]){ lawn(70,14,X-58,Z+sz*31); lawn(40,12,X+62,Z+sz*28); }
+      keepOut(X-140,Z-62,X+120,Z+62);
+      lm("St Paul's Cathedral", X, 60, Z, 190, "Sir Christopher Wren's masterpiece, finished in 1710 after the Great Fire. Its dome rises 111 metres over Ludgate Hill.", {major:true}); }
+    station("St Paul's", 'Central line', SPC.x + 92, -786, 0, {w:14, desc:"Central line, a few steps from the cathedral's north side."});
+    lm('Millennium Bridge', MB.x, 4, MB.z, 120, "A steel suspension footbridge opened in 2000, nicknamed the Wobbly Bridge, linking St Paul's to Tate Modern.");
+    // Tate Modern, the old Bankside Power Station, across the Millennium Bridge
+    { const b = bankAt(MB.x, MB.z, -(RIV_W + 62)), g = new THREE.Group(), brick = facadeOf('#6e4a3a','#2b3036','#5a3a2c');
+      g.position.set(b.x,0,b.z); g.rotation.y = b.yaw;                 // local -z faces the river
+      ubox(g, 0,17,0, 190,34,62, brick); ubox(g, 0,49.5,-24, 13,99,13, brick);
+      const sw = new THREE.Mesh(new THREE.CylinderGeometry(24,42,64,4), brick); sw.rotation.y = Math.PI/4 + .2; sw.position.set(10,32,72); g.add(sw);
+      bakeGroup(g); solidOBB(b.x, b.z, 95, 31, b.yaw); solidOBB(b.x - b.lx*72, b.z - b.lz*72, 34, 34, b.yaw);
+      lm('Tate Modern', b.x, 40, b.z, 200, "The old Bankside Power Station, now a gallery of modern art, with its 99-metre brick chimney."); }
+    // the Monument to the Great Fire (Wren and Hooke, 1677): a 61 m column topped by a gilded urn of flames
+    { const g = new THREE.Group(), X = 3290, Z = -235;
+      gbox(g, X, Z, 8, 8, 12, GL.portland); cyl(2.2,2.5,40,16,GL.portland,X,32,Z,g); box(5,1.5,5,GL.portland,X,52.75,Z,g);
+      cyl(1.6,1.6,4,12,GL.iron,X,55.5,Z,g); cyl(1.2,.6,2.5,12,goldM,X,58.75,Z,g); const fl = new THREE.Mesh(new THREE.ConeGeometry(1.3,3,10), goldM); fl.position.set(X,61.5,Z); g.add(fl);
+      bakeGroup(g); keepOut(X-8,Z-8,X+8,Z+8);
+      lm('The Monument', X, 30, Z, 70, "Wren's 61-metre column of 1677 remembers the Great Fire of 1666, which began 61 metres from its base, in Pudding Lane."); }
+    // the City's towers: the Gherkin, the Cheesegrater, 22 Bishopsgate, Tower 42 and the Walkie-Talkie
+    { const lit = () => srgb(canvasTex(256,256,(q,w,h)=>{ q.fillStyle='#000'; q.fillRect(0,0,w,h); for (let y=0;y<h;y+=8) for (let x=0;x<w;x+=8) if (rand() < .3){ q.fillStyle = rand() < .6 ? '#ffd9a0' : '#d6e6ff'; q.fillRect(x+1,y+1,6,6); } }));
+      const gTex = srgb(canvasTex(512,512,(q,w,h)=>{ q.fillStyle='#4f6f86'; q.fillRect(0,0,w,h);
+        for (let k=0;k<6;k++){ q.fillStyle='#1f2f3c'; for (let y=0;y<h;y+=8){ const x = ((k/6 + y/h*.5)*w) % w; q.fillRect(x, y, w/14, 8); q.fillRect(x - w, y, w/14, 8); } }
+        q.strokeStyle='rgba(230,240,248,.5)'; q.lineWidth=2; for (let i=-24;i<48;i++){ q.beginPath(); q.moveTo(i*w/24,0); q.lineTo(i*w/24+w/2,h); q.stroke(); q.beginPath(); q.moveTo(i*w/24,0); q.lineTo(i*w/24-w/2,h); q.stroke(); } }));
+      const gMat = std(0xffffff,{map:gTex,metalness:.6,roughness:.2,emissive:0xffffff,emissiveMap:lit(),emissiveIntensity:0}); facadeMats.push(gMat);
+      const prof = []; for (let k=0;k<=24;k++){ const y = k*7.5; prof.push(new THREE.Vector2(y < 70 ? 24.5 + 4*Math.sin(y/70*Math.PI/2) : 28.5*Math.sqrt(Math.max(0, 1 - ((y-70)/110)**2)), y)); }
+      const gh = new THREE.Mesh(new THREE.LatheGeometry(prof, 36), gMat); gh.position.set(3821,0,-791); fsc.add(gh); cull(gh); cityCol.push([3797,-815,3845,-767]); keepOut(3790,-822,3852,-760);
+      lm('The Gherkin', 3821, 90, -791, 200, "30 St Mary Axe, the City's 180-metre glass tower, opened in 2004.");
+      { const sh = new THREE.Shape([new THREE.Vector2(20,0), new THREE.Vector2(-20,0), new THREE.Vector2(12,225), new THREE.Vector2(20,225)]);
+        const geo = new THREE.ExtrudeGeometry(sh, {depth:48, bevelEnabled:false}); geo.translate(0,0,-24); geo.rotateY(Math.PI/2); scaleUV(geo, 1/12, 1/12);
+        const m = new THREE.Mesh(geo, GLASS2); m.position.set(3670,0,-676); fsc.add(m); cull(m); cityCol.push([3646,-696,3694,-656]); keepOut(3640,-702,3700,-650); }
+      { const geo = scaleUV(new THREE.CylinderGeometry(34,36,278,8), 220/12, 278/12); const m = new THREE.Mesh(geo, GLASS2); m.position.set(3566,139,-829); fsc.add(m); cull(m); cityCol.push([3532,-863,3600,-795]); keepOut(3526,-869,3606,-789); }
+      { const geo = scaleUV(new THREE.CylinderGeometry(22,22,183,6), 138/12, 183/12); const m = new THREE.Mesh(geo, GLASS); m.position.set(3500,91.5,-905); fsc.add(m); cull(m); cityCol.push([3480,-925,3520,-885]); keepOut(3474,-931,3526,-879); }
+      { const Rw = y => 20 + 11*Math.pow(y/160,1.7), sh = new THREE.Shape(); sh.moveTo(-Rw(0),0); sh.lineTo(Rw(0),0);
+        for (let y=10; y<=160; y+=10) sh.lineTo(Rw(y),y); for (let x=.75; x>=-1; x-=.25) sh.lineTo(x*Rw(160), 160 + 6*(1-x*x)); for (let y=150; y>=10; y-=10) sh.lineTo(-Rw(y),y);
+        const geo = new THREE.ExtrudeGeometry(sh, {depth:36, bevelEnabled:false, curveSegments:1}); geo.translate(0,0,-18); scaleUV(geo, 1/12, 1/12);
+        const m = new THREE.Mesh(geo, GLASS2); m.position.set(3558,0,-381); fsc.add(m); cull(m); cityCol.push([3538,-399,3578,-363]); keepOut(3526,-405,3590,-357);
+        lm('The Walkie-Talkie', 3558, 90, -381, 190, "20 Fenchurch Street, which widens as it rises to the Sky Garden at its top, 160 metres up."); } }
+    station('Tower Hill', 'Circle and District lines', ...towW(-110,-188), TOW.yaw, {w:18, desc:"Circle and District lines, beside the Tower and a surviving stretch of the Roman city wall."});
+    { const [x, z] = towW(-120,-236); lawn(90,40,x,z,TOW.yaw); }                            // Trinity Square Gardens
+
+    /* ---- St James's Park station, Victoria Street, Westminster Cathedral and Victoria ---- */
+    roadLine([[-165,96],[-140,490],[-110,860],[28,880]], 14);                               // Horse Guards Road and Great George Street
+    roadLine([[-140,490],[-876,772]], 14);                                                  // Birdcage Walk
+    roadLine([[-990,480],[-876,772],[-853,1000],[-860,1292]], 14);                          // Buckingham Gate
+    roadLine([[-853,1000],[-430,900]], 12);                                                 // Petty France
+    roadLine([[-430,900],[-430,1173]], 12); roadLine([[-430,900],[-110,860]], 12);          // Broadway and Tothill Street
+    roadLine([[28,1012],[-20,1060],[-430,1173],[-860,1292],[-1150,1372]], 16);              // Broad Sanctuary and Victoria Street
+    roadLine([[-1010,500],[-1025,860],[-1260,1365]], 14);                                   // Buckingham Palace Road
+    roadLine([[-1330,1360],[-1260,1365],[-1150,1372]], 14);                                 // Terminus Place, in front of Victoria station
+    { const g = new THREE.Group(), b55 = facadeOf('#e8e1d0','#4a5562','#d6cdb8');            // 55 Broadway (Holden, 1929), over St James's Park station
+      gbox(g, -485, 960, 70, 18, 30, b55); gbox(g, -485, 960, 18, 70, 30, b55); gbox(g, -485, 960, 20, 20, 46, b55);
+      box(16,7,16,GL.portland,-485,49.5,960,g); box(12,3,12,GL.portland,-485,54.5,960,g); bakeGroup(g); keepOut(-522,923,-448,997); }
+    station("St James's Park", 'Circle and District lines', -449, 960, Math.PI/2, {noBody:true, desc:"Circle and District lines, beneath 55 Broadway, the 1929 headquarters of London's Underground."});
+    // Westminster Cathedral (1903): red brick banded with white stone, shallow domes and an 87 m campanile
+    { const g = new THREE.Group(), stripe = srgb(canvasTex(256,256,(q,w,h)=>{ q.fillStyle='#9a4a36'; q.fillRect(0,0,w,h); q.fillStyle='rgba(0,0,0,.08)'; for (let y=0;y<h;y+=4) q.fillRect(0,y,w,1);
+        q.fillStyle='#ece5d6'; for (let y=0;y<h;y+=51) q.fillRect(0,y,w,13); q.fillStyle='#2a2e34'; for (const x of [40,168]){ q.fillRect(x,96,48,90); q.beginPath(); q.arc(x+24,96,24,Math.PI,0); q.fill(); } }));
+      stripe.wrapS = stripe.wrapT = THREE.RepeatWrapping; const wc = std(0xffffff,{map:stripe,roughness:.9}), cu = std(0x7d8a86,{metalness:.3,roughness:.6});
+      gbox(g, -950, 1416, 46, 100, 28, wc); for (const dz of [-30,0,30]) dome(13,.5,cu,-950,28,1416+dz,g,24);
+      gbox(g, -950, 1363, 50, 8, 32, wc); { const a = new THREE.Mesh(new THREE.PlaneGeometry(9,12), std(0x2a2e34)); a.position.set(-950,6,1358.9); a.rotation.y = Math.PI; g.add(a); }
+      gbox(g, -985, 1374, 9.5, 9.5, 72, wc); box(11,6,11,GL.white,-985,75,1374,g); box(9,4,9,wc,-985,80,1374,g); dome(4,1,cu,-985,82,1374,g,16);
+      box(.3,3,.3,goldM,-985,87,1374,g); box(1.6,.3,.3,goldM,-985,87.6,1374,g);
+      bakeGroup(g); keepOut(-995,1326,-920,1470);
+      lm('Westminster Cathedral', -950, 40, 1400, 140, "England's largest Catholic church, opened in 1903, in red brick banded with white stone beneath an 87-metre bell tower."); }
+    // Victoria station: the Edwardian frontage on Terminus Place, the Grosvenor Hotel, and the train sheds running south
+    { const g = new THREE.Group(), front = facadeOf('#e2d6bc','#4a5560','#d4c6a6'), hotel = facadeOf('#d9c8a0','#45505c','#efe6d0'), shedM = std(0x9aa8b2,{metalness:.5,roughness:.35});
+      gbox(g, -1215, 1437, 230, 26, 18, front); gbox(g, -1170, 1436, 72, 30, 25, front); prism(56,8,4,GL.portland,-1170,25,1422,g);
+      gbox(g, -1365, 1420, 70, 110, 40, hotel); box(72,6,112,GL.slate,-1365,43,1420,g);
+      for (const [hx,hz] of [[-1395,1370],[-1335,1370],[-1395,1470],[-1335,1470]]){ const c = new THREE.Mesh(new THREE.ConeGeometry(8,9,4), GL.slate); c.rotation.y = Math.PI/4; c.position.set(hx,50.5,hz); g.add(c); }
+      for (const sx of [-1275,-1155]){ const sh = new THREE.Mesh(new THREE.CylinderGeometry(58,58,420,18,1,true,Math.PI/2,Math.PI), shedM); sh.rotation.x = Math.PI/2; sh.scale.set(1,1,.42); sh.position.set(sx,8,1665); g.add(sh);
+        for (const dx of [-58,58]) box(2,8,420,std(0x8a6a50,{roughness:.9}),sx+dx,4,1665,g); }
+      cityCol.push([-1335,1452,-1095,1876]);
+      const sign = new THREE.Mesh(new THREE.PlaneGeometry(40,3.2), new THREE.MeshBasicMaterial({map:srgb(canvasTex(1024,82,(q,w,h)=>{ q.fillStyle='#1c2230'; q.fillRect(0,0,w,h); q.fillStyle='#f2e6c8'; q.font='700 54px Georgia,serif'; q.textAlign='center'; q.fillText('VICTORIA STATION',w/2,60); }))}));
+      sign.position.set(-1215,15.5,1423.9); sign.rotation.y = Math.PI; g.add(sign);
+      bakeGroup(g); keepOut(-1410,1330,-1090,1890); MAP.plazas.push({x:-1240, z:1395, w:190, d:50, rot:0, col:'#6e675a'}); }
+    station('Victoria', 'Circle, District and Victoria lines', -1250, 1423, Math.PI, {noBody:true, desc:"One of London's busiest railway terminals, with the Victoria, Circle and District lines beneath it.", lm:{major:true}});
+
+    /* ---- Green Park, Hyde Park Corner, Belgravia, Hyde Park, Mayfair and Bond Street ---- */
+    const HPC = {x:-1480, z:340}, ring = [];
+    const ringPt = (x,z) => { const a = Math.atan2(z-HPC.z, x-HPC.x); ring.push(a); return [HPC.x + Math.cos(a)*34, HPC.z + Math.sin(a)*34]; };
+    roadLine([[PICC.x,PICC.z],[-1250,-294],[-1500,-300],ringPt(-1500,-300)], 16);            // Piccadilly, down to Hyde Park Corner
+    roadLine([[-985,410],[-1060,355],ringPt(-1060,355)], 12);                               // Constitution Hill
+    roadLine([ringPt(-1455,400),[-1455,400],[-1455,860],[-1330,1360]], 16);                 // Grosvenor Place, down to Victoria
+    roadLine([ringPt(-2400,340),[-2400,340]], 16);                                          // Knightsbridge
+    roadLine([[-1950,-1000],ringPt(-1950,-1000)], 16);                                      // Park Lane
+    { for (let a=-Math.PI; a<Math.PI; a+=Math.PI/4) if (!ring.some(b => Math.abs(Math.atan2(Math.sin(a-b), Math.cos(a-b))) < .35)) ring.push(a);
+      ring.sort((a,b) => a-b); roadLine([...ring, ring[0]].map(a => [HPC.x + Math.cos(a)*34, HPC.z + Math.sin(a)*34]), 12); }   // the roundabout
+    roadLine([[-2400,-1000],[-1950,-1000],[-1590,-1000],[-1010,-1000],[0,-1000],[400,-1000]], 16);   // Bayswater Road, Oxford Street, New Oxford Street
+    roadLine([[-1590,-1000],[-1250,-294]], 14);                                             // New Bond Street and Old Bond Street
+    station('Green Park', 'Jubilee, Piccadilly and Victoria lines', -905, -266, Math.PI, {w:12, d:6, desc:"Jubilee, Piccadilly and Victoria lines, at the corner of Green Park on Piccadilly."});
+    station('Bond Street', 'Central, Jubilee and Elizabeth lines', -1610, -986, Math.PI, {desc:"Central, Jubilee and Elizabeth lines, in the middle of Oxford Street's shops."});
+    // Hyde Park Corner: the roundabout, and Wellington Arch crowned by Peace descending on the chariot of war
+    { const disc = new THREE.Mesh(new THREE.CircleGeometry(44,48), std(0x37383c,{roughness:.85})); disc.rotation.x = -Math.PI/2; disc.position.set(HPC.x,.1,HPC.z); fsc.add(disc);
+      MAP.plazas.push({x:HPC.x, z:HPC.z, w:70, d:70, rot:0, col:'#3a3d45'});
+      const g = new THREE.Group(), X = HPC.x, Z = HPC.z; cyl(22,22,.3,40,std(0xb8b0a0,{roughness:.9}),X,.15,Z,g);
+      for (const sx of [-1,1]){ box(7,13,11,GL.portland,X+sx*9.5,6.5,Z,g); for (const sz of [-1,1]) for (const dx of [-2.2,2.2]) cyl(.6,.6,11,10,GL.portland,X+sx*9.5+dx,6.5,Z+sz*6,g); }
+      box(26,5,11.5,GL.portland,X,15.5,Z,g); box(8,2.6,3.6,GL.bronze,X,19.3,Z,g);
+      for (const dx of [-1.5,-.5,.5,1.5]) box(.7,1.6,2.6,GL.bronze,X+dx,21.4,Z+2.6,g); cyl(.5,.6,3,8,GL.bronze,X,22,Z-.6,g);
+      bakeGroup(g); cityCol.push([X-22,Z-22,X+22,Z+22]);
+      lm('Wellington Arch', X, 12, Z, 50, "The triumphal arch at Hyde Park Corner, crowned by the largest bronze sculpture in Europe: Peace descending on the chariot of war."); }
+    // Hyde Park, west of Park Lane, with the Serpentine; Marble Arch at its north-east corner
+    const HYDE = [[-1960,-985],[-1501,325],[-2420,325],[-2420,-985]];
+    { const sh = new THREE.Shape(HYDE.map(([x,z]) => new THREE.Vector2(x,-z))), m = new THREE.Mesh(new THREE.ShapeGeometry(sh), grass); m.rotation.x = -Math.PI/2; m.position.y = .03; fsc.add(m);
+      MAP.greens.push({poly:HYDE});
+      const lake = new THREE.Mesh(new THREE.CircleGeometry(1,48), water); lake.scale.set(150,32,1); lake.rotation.set(-Math.PI/2,0,-.2); lake.position.set(-2330,.06,-560); fsc.add(lake);
+      MAP.lakes.push({x:-2330, z:-560, rx:150, ry:32, rot:.2});
+      lm('Hyde Park', -2050, 8, -380, 400, "London's great royal park: 140 hectares of lawns and trees around the Serpentine.", {major:true});
+      const g = new THREE.Group(), X = -2000, Z = -965;
+      box(19,14,7,GL.marble,X,7,Z,g); box(20,3,7.5,GL.marble,X,15.5,Z,g);
+      for (const sz of [-1,1]) for (const [dx,w,h] of [[0,5,9],[-6.5,3,6],[6.5,3,6]]){ const a = new THREE.Mesh(new THREE.PlaneGeometry(w,h), std(0x2a2c30)); a.position.set(X+dx,h/2,Z+sz*3.52); if (sz < 0) a.rotation.y = Math.PI; g.add(a); }
+      bakeGroup(g); cityCol.push([X-9.5,Z-3.5,X+9.5,Z+3.5]);
+      lm('Marble Arch', X, 8, Z, 40, "John Nash's white marble arch of 1827, moved here from Buckingham Palace in 1851."); }
+    // Belgravia's garden squares, and Grosvenor Square in Mayfair
+    for (const [w,d,x,z] of [[150,150,-1850,700],[360,64,-1790,1140],[130,130,-1700,-640]]){ lawn(w,d,x,z); zones.push([x-w/2,z-d/2,x+w/2,z+d/2]);
+      for (let a=x-w/2+12; a<x+w/2-6; a+=24) for (let b=z-d/2+12; b<z+d/2-6; b+=24) extraTrees.push([a + (rand()-.5)*6, b + (rand()-.5)*6, .9]); }
+    lm('Belgrave Square', -1850, 8, 700, 150, "The grandest of Belgravia's garden squares, ringed by white stucco terraces of the 1820s and 30s, many of them embassies now.");
+    const inPoly = (P, x, z) => { let c = false; for (let i=0, j=P.length-1; i<P.length; j=i++){ const [xi,zi] = P[i], [xj,zj] = P[j]; if ((zi > z) !== (zj > z) && x < (xj-xi)*(z-zi)/(zj-zi) + xi) c = !c; } return c; };
+    const inHyde = (x,z,r=0) => [[0,0],[r,0],[-r,0],[0,r],[0,-r]].some(([a,b]) => inPoly(HYDE, x+a, z+b));
+    // the Shard, at London Bridge on the South Bank
+    { const sh = new THREE.Mesh(new THREE.ConeGeometry(30,310,4), std(0x9fb4c8,{metalness:.6,roughness:.2})); sh.position.set(3330,155,500); sh.rotation.y = .3; fsc.add(sh); cull(sh);
+      cityCol.push([3305,475,3355,525]); keepOut(3290,460,3370,540);
+      lm('The Shard', 3330, 150, 500, 330, "At 310 metres the tallest building in the United Kingdom, beside London Bridge station.", {major:true}); }
+
     // exclusion zones for the street grid: parks, squares, landmarks, the river
-    const rects = [[-100,-105,115,65],[-140,140,-5,360],[-1400,-260,-900,300],[-1440,330,-990,830],[-1050,340,-900,480],[20,870,215,1020],[200,940,330,1300],[-70,1040,170,1135],[160,345,240,420],[170,820,330,945],[-960,150,-140,470]];
-    const inZone = (x,z,r) => rects.some(([a,b,c,d]) => x > a-r && x < c+r && z > b-r && z < d+r) || (x > bankX(z)-30-r && x < bankX(z)+290+r) || inSoho(x,z,r)
-      || segDist(x,z,PARK_SJ.x-400*Math.cos(.37),PARK_SJ.z-400*Math.sin(.37),PARK_SJ.x+400*Math.cos(.37),PARK_SJ.z+400*Math.sin(.37)) < 165 + r
+    const rects = [[-100,-105,115,65],[-140,140,-5,360],[-1475,-260,-900,300],[-1440,330,-990,830],[-1050,340,-900,480],[20,870,215,1020],[200,940,330,1300],[-70,1040,170,1135],[160,345,240,420],[170,820,330,945], ...zones];
+    const SJa = [Math.cos(PARK_SJ.rot)*380, -Math.sin(PARK_SJ.rot)*380];   // St James's Park's long axis
+    const inZone = (x,z,r) => rects.some(([a,b,c,d]) => x > a-r && x < c+r && z > b-r && z < d+r) || RIVER.inside(x,z,30+r) || inSoho(x,z,r) || inHyde(x,z,r)
+      || segDist(x,z,PARK_SJ.x-SJa[0],PARK_SJ.z-SJa[1],PARK_SJ.x+SJa[0],PARK_SJ.z+SJa[1]) < 165 + r
       || segDist(x,z,15,40,60,900) < 66 + r;                                     // the Whitehall frontage
-    const nearMain = (x,z,r) => roads.some(rd => segDist(x,z,rd.x1,rd.z1,rd.x2,rd.z2) < rd.w/2 + 6 + r);
+    const mains = roads.slice(), nearMain = (x,z,r) => mains.some(rd => segDist(x,z,rd.x1,rd.z1,rd.x2,rd.z2) < rd.w/2 + 6 + r);
     // an even 100 m street grid: 10 m side streets, buildings set back behind 5 m pavements
-    const G = 100, X0 = -1400, Z0 = -1100, NX = 26, NZ = 26;   // north to beyond Oxford Street
+    const G = 100, X0 = -2400, Z0 = -1100, NX = 73, NZ = 30;   // Hyde Park to the Tower, beyond Oxford Street to Pimlico
     for (let i=0; i<=NX; i++) for (let j=0; j<NZ; j++){ const x = X0 + i*G, z1 = Z0 + j*G, z2 = z1 + G; if (!inZone(x,(z1+z2)/2,4) && !nearMain(x,(z1+z2)/2,-20)) road(x,z1,x,z2,10,TARMAC2,.05); }
     for (let j=0; j<=NZ; j++) for (let i=0; i<NX; i++){ const z = Z0 + j*G, x1 = X0 + i*G, x2 = x1 + G; if (!inZone((x1+x2)/2,z,4) && !nearMain((x1+x2)/2,z,-20)) road(x1,z,x2,z,10,TARMAC2,.062); }
     // blocks: one even mansion block per cell, or four smaller ones where a main road cuts the corner
-    const district = (x,z) => x > bankX(z) ? [GLASS, CREAM] : z < -60 ? [BRICK, CREAM] : x < -150 ? [CREAM, PORTLAND] : [PORTLAND, PORTLAND];
+    // districts: the South Bank, Belgravia's white stucco, the City's glass and stone, Fleet Street, Victoria Street's offices,
+    // Mayfair and Soho's brick, St James's and Westminster
+    const district = (x,z) => RIVER.side(x,z) < 0 ? [GLASS, CREAM] : x < -1465 && z > 330 ? [STUCCO, STUCCO] : x > 2900 ? [GLASS2, GLASS] : x > 1600 ? [PORTLAND, GLASS2]
+      : x > 600 && z < 0 ? [PORTLAND, CREAM] : z > 1050 && x < 0 ? [GLASS2, PORTLAND] : z < -60 ? [BRICK, CREAM] : x < -150 ? [CREAM, PORTLAND] : [PORTLAND, PORTLAND];
     const roofMat = std(0x5c5f66,{roughness:.8});
-    const block = (cx,cz,w,d,h,mat) => { building(cx,cz,w,d,h,mat); box(w+.8,.7,d+.8,roofMat,cx,h+.35,cz,fsc); };
+    // blocks are merged into a few meshes per 500 m chunk; each still collides and gets its trims
+    const block = (cx,cz,w,d,h,mat) => { const g = mgrp(mat, cx, cz); g.occlude = true; mbox(g, cx, 0, cz, w, h, d); mbox(mgrp(roofMat, cx, cz), cx, h, cz, w+.8, .7, d+.8);
+      cityCol.push([cx-w/2,cz-d/2,cx+w/2,cz+d/2]); trims.push([cx,cz,w,d,h,0,mat === GLASS || mat === GLASS2]); };
     for (let i=0; i<NX; i++) for (let j=0; j<NZ; j++){
-      const cx = X0 + i*G + G/2, cz = Z0 + j*G + G/2, mats = district(cx,cz), h = 21 + ((i + j*2) % 3)*3, mat = mats[(i+j)%2];
+      const cx = X0 + i*G + G/2, cz = Z0 + j*G + G/2, mats = district(cx,cz), mat = mats[(i+j)%2];
+      const h = mat === STUCCO ? 18 + ((i+j)%2)*3 : 21 + ((i + 2 + j*2) % 3)*3 + (cx > 2600 && mats[0] === GLASS2 ? ((i*7 + j*3) % 5)*8 : 0);
       if (!inZone(cx,cz,39) && !nearMain(cx,cz,39)) { block(cx,cz,78,78,h,mat); continue; }
       for (const [ox,oz] of [[-1,-1],[1,-1],[-1,1],[1,1]]){ const qx = cx + ox*21, qz = cz + oz*21; if (!inZone(qx,qz,17) && !nearMain(qx,qz,17)) block(qx,qz,34,34,h,mat); }
     }
@@ -2326,25 +2807,25 @@ function buildScene(){
     // granite kerbs along every road edge, broken where another road joins
     { const kerbs = [], lamps = [];
       roads.forEach((r,ri) => { const ux = (r.x2-r.x1)/r.len, uz = (r.z2-r.z1)/r.len, a = Math.atan2(ux,uz);
-        for (let s=3; s<r.len; s+=6) for (const side of [-1,1]){
-          const x = r.x1 + ux*s + uz*side*(r.w/2+.15), z = r.z1 + uz*s - ux*side*(r.w/2+.15);
-          if (!onAnyRoad(x,z,ri,.2)) kerbs.push([x,z,a]);
-          if (r.w >= 14 && s % 30 < 6 &&!onAnyRoad(x + uz*side*1.1, z - ux*side*1.1, ri, 1)) lamps.push([x + uz*side*1.1, z - ux*side*1.1]);
-        } });
-      const kerbIM = new THREE.InstancedMesh(new THREE.BoxGeometry(.3,.16,6.02),std(0xa9a7a2,{roughness:.8}), kerbs.length);
-      const d = new THREE.Object3D();
-      kerbs.forEach(([x,z,a],i) => { d.position.set(x,.08,z); d.rotation.set(0,a,0); d.updateMatrix(); kerbIM.setMatrixAt(i,d.matrix); });
+        for (const side of [-1,1]){ let run = -1;
+          const kx = s => r.x1 + ux*s + uz*side*(r.w/2+.15), kz = s => r.z1 + uz*s - ux*side*(r.w/2+.15);
+          const end = s => { if (run >= 0){ const m = (run + s)/2; kerbs.push([kx(m), kz(m), a, s - run + 6.02]); } run = -1; };
+          for (let s=3; s<r.len; s+=6){ const x = kx(s), z = kz(s);
+            if (!onAnyRoad(x,z,ri,.2)){ if (run < 0) run = s; } else end(s - 6);
+            if (r.w >= 14 && s % 30 < 6 &&!onAnyRoad(x + uz*side*1.1, z - ux*side*1.1, ri, 1)) lamps.push([x + uz*side*1.1, z - ux*side*1.1]); }
+          end(Math.floor((r.len-3)/6)*6 + 3); } });
+      const kerbMat = std(0xa9a7a2,{roughness:.8});
+      chunkIM(new THREE.BoxGeometry(.3,.16,1), kerbMat, kerbs, (d,[x,z,a,len]) => { d.position.set(x,.08,z); d.rotation.set(0,a,0); d.scale.set(1,1,len); }, {chunk:900, far:700, ud:{noCast:true}});
       // black London lamp posts with lanterns
       const poleGeo = new THREE.CylinderGeometry(.07,.12,5.6,8); poleGeo.translate(0,2.8,0);
-      const poleIM = new THREE.InstancedMesh(poleGeo, std(0x15171b,{metalness:.5,roughness:.4}), lamps.length);
-      const headIM = new THREE.InstancedMesh(new THREE.CylinderGeometry(.24,.16,.5,6), lampHeadMat = std(0xf6e7c0,{emissive:0xffd9a0,emissiveIntensity:.1,roughness:.3}), lamps.length);
+      lampHeadMat = std(0xf6e7c0,{emissive:0xffd9a0,emissiveIntensity:.1,roughness:.3});
       // at night each lamp throws a warm pool of light on the pavement (above every road layer, under Tommy's shadow)
       poolMat = new THREE.MeshBasicMaterial({map:glowTex, color:0xffc070, transparent:true, opacity:0, blending:THREE.AdditiveBlending, depthWrite:false});
       const poolGeo = new THREE.PlaneGeometry(10,10); poolGeo.rotateX(-Math.PI/2);
-      const poolIM = new THREE.InstancedMesh(poolGeo, poolMat, lamps.length); poolIM.renderOrder = 1;
-      lamps.forEach(([x,z],i) => { d.rotation.set(0,0,0); d.position.set(x,.118,z); d.updateMatrix(); poolIM.setMatrixAt(i,d.matrix); }); fsc.add(poolIM);
-      lamps.forEach(([x,z],i) => { d.rotation.set(0,0,0); d.position.set(x,0,z); d.updateMatrix(); poleIM.setMatrixAt(i,d.matrix); d.position.set(x,5.85,z); d.updateMatrix(); headIM.setMatrixAt(i,d.matrix); cityCol.push([x-.2,z-.2,x+.2,z+.2]); });
-      kerbIM.userData.noCast = true; fsc.add(kerbIM, poleIM, headIM); }
+      chunkIM(poolGeo, poolMat, lamps, (d,[x,z]) => d.position.set(x,.118,z), {chunk:1200, far:1000}).forEach(im => { im.renderOrder = 1; });
+      chunkIM(poleGeo, std(0x15171b,{metalness:.5,roughness:.4}), lamps, (d,[x,z]) => d.position.set(x,0,z), {chunk:1200, far:1400});
+      chunkIM(new THREE.CylinderGeometry(.24,.16,.5,6), lampHeadMat, lamps, (d,[x,z]) => d.position.set(x,5.85,z), {chunk:1200, far:1600});
+      for (const [x,z] of lamps) cityCol.push([x-.2,z-.2,x+.2,z+.2]); }
     // zebra crossings with Belisha beacons
     { const zebraTex = canvasTex(64,16,(g,w,h)=>{ for (let x=0;x<w;x+=16){ g.fillStyle='#f4f3ee'; g.fillRect(x,0,8,h); } });
       const zebraMat = new THREE.MeshStandardMaterial({map:zebraTex,transparent:true,roughness:.6});
@@ -2360,43 +2841,44 @@ function buildScene(){
 
     /* ---- HD trees: bark and leaf cards cut from the user's tree sheet (assets/tree-sheet.jpg) ---- */
     { const spots = [];
-      const tree = (x,z,s=1) => { if (!onAnyRoad(x,z,-1,1.5) && !(x > bankX(z)-1.5 && x < bankX(z)+262)) spots.push([x,z,s]); };
+      const onDeck = (x,z) => BRIDGES.some(b => { const dx = x-b.x, dz = z-b.z; return Math.abs(dx*b.ux + dz*b.uz) < b.hl + 3 && Math.abs(dx*b.uz - dz*b.ux) < b.hw + 4; });
+      const tree = (x,z,s=1) => { if (!onAnyRoad(x,z,-1,1.5) && !RIVER.inside(x,z,1.5) && !onDeck(x,z) && !noTree.some(([a,b,c,d]) => x > a && x < c && z > b && z < d)) spots.push([x,z,s]); };
       // plane trees in even rows along The Mall, the Embankment and Northumberland Avenue
       for (let k=.02; k<.98; k+=1/64) for (const s of [-1,1]){ const x = -90 - 895*k, z = 70 + 340*k; tree(x + s*13*.355, z + s*13*.935, 1.05); }
-      for (let z=-560; z<1380; z+=18){ if (z > 930 && z < 1000) continue; tree(bankX(z)-3.5, z, .95); }
+      // plane trees all along the Victoria Embankment and Upper Thames Street, and on Bankside
+      for (let i=RIVER.at(bankX(1380)+130,1380).i; i<RIVER.at(...towW(-236,302)).i; i+=.72) tree(...RIVER.offAt(i, RIV_W+3.5), .95);
+      for (let i=WB.i; i<TB.i; i+=.72) tree(...RIVER.offAt(i, -(RIV_W+3.5)), .95);
+      for (const [x,z,sc] of extraTrees) tree(x,z,sc);
       for (let k=.08; k<.95; k+=.06) for (const s of [-1,1]){ const x = 50 + 350*k, z = 30 + 160*k; tree(x + s*10*-.416, z + s*10*.909, .9); }
       // parks: spaced on an even, gently jittered lattice
       const lattice = (x1,z1,x2,z2,step,keep) => { for (let x=x1; x<=x2; x+=step) for (let z=z1; z<=z2; z+=step){ const jx = x + (rand()-.5)*step*.35, jz = z + (rand()-.5)*step*.35; if (keep(jx,jz)) tree(jx,jz,.85 + rand()*.35); } };
-      const inSJ = (x,z) => { const c = Math.cos(.37), s = Math.sin(.37), lx = (x-PARK_SJ.x)*c + (z-PARK_SJ.z)*s, lz = -(x-PARK_SJ.x)*s + (z-PARK_SJ.z)*c; return Math.abs(lx) < 380 && Math.abs(lz) < 150; };
-      const inLake = (x,z) => { const c = Math.cos(.37), s = Math.sin(.37), lx = (x+520)*c + (z-330)*s, lz = -(x+520)*s + (z-330)*c; return (lx/280)**2 + (lz/60)**2 < 1; };
-      lattice(-960,120,-150,480,30,(x,z) => inSJ(x,z) && !inLake(x,z));
+      // along each park's own axis: St James's Park and its lake lie parallel to The Mall
+      const local = (x,z,cx,cz,r) => { const c = Math.cos(r), s = Math.sin(r); return [(x-cx)*c - (z-cz)*s, (x-cx)*s + (z-cz)*c]; };
+      const inSJ = (x,z) => { const [lx,lz] = local(x,z,PARK_SJ.x,PARK_SJ.z,PARK_SJ.rot); return Math.abs(lx) < 360 && Math.abs(lz) < 150; };
+      const inLake = (x,z) => { const [lx,lz] = local(x,z,-522,433,.37); return (lx/280)**2 + (lz/60)**2 < 1; };
+      const inSerp = (x,z) => { const [lx,lz] = local(x,z,-2330,-560,-.2); return (lx/170)**2 + (lz/50)**2 < 1; };
+      lattice(-990,150,-120,760,30,(x,z) => inSJ(x,z) && !inLake(x,z));
+      lattice(-2420,-985,-1500,325,44,(x,z) => inHyde(x,z,-12) && !inSerp(x,z));            // Hyde Park
       lattice(-205,-255,-105,-170,24,() => true);                                   // Leicester Square
       lattice(-298,-902,-252,-848,18,(x,z) => Math.hypot(x+275, z+875) > 9);      // Soho Square, round the hut
-      lattice(-1320,-230,-950,270,32,() => true);
+      lattice(-1450,-230,-950,270,32,() => true);
       lattice(-1400,400,-1060,830,36,() => true);
       for (let i=0;i<10;i++){ const a = i/10*Math.PI*2; tree(116 + Math.cos(a)*44, 945 + Math.sin(a)*36, .8); }
-      const n = spots.length, CARDS = 18, LIMBS = 3;
+      const CARDS = 18, LIMBS = 3;
       const barkMat = std(0x7d756c,{roughness:1}), coreMat = std(0x2b4220,{roughness:1});
       const leafMat = new THREE.MeshStandardMaterial({color:0xffffff, alphaTest:.5, side:THREE.DoubleSide, roughness:.85});
       const trunkGeo = new THREE.CylinderGeometry(.28,.5,8,9); trunkGeo.translate(0,4,0);
       const limbGeo = new THREE.CylinderGeometry(.09,.2,4.4,6); limbGeo.translate(0,2.2,0);
-      const trunkIM = new THREE.InstancedMesh(trunkGeo, barkMat, n), limbIM = new THREE.InstancedMesh(limbGeo, barkMat, n*LIMBS);
-      const coreIM = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(3.2,1), coreMat, n), cardIM = new THREE.InstancedMesh(new THREE.PlaneGeometry(5.6,4.2), leafMat, n*CARDS);
-      cardIM.visible = false; cardIM.userData.cast = true;
-      const d = new THREE.Object3D();
-      spots.forEach(([x,z,s],i) => {
-        const yaw = rand()*Math.PI*2;
-        d.position.set(x,0,z); d.rotation.set(0,yaw,0); d.scale.setScalar(s); d.updateMatrix(); trunkIM.setMatrixAt(i,d.matrix);
-        for (let l=0;l<LIMBS;l++){ d.position.set(x,6.4*s,z); d.rotation.set(.75,yaw + l*2.1,0,'YXZ'); d.updateMatrix(); limbIM.setMatrixAt(i*LIMBS+l,d.matrix); }
-        d.rotation.set(0,yaw,0); d.position.set(x,10.4*s,z); d.scale.set(1.3*s,1.05*s,1.3*s); d.updateMatrix(); coreIM.setMatrixAt(i,d.matrix);
-        for (let c=0;c<CARDS;c++){
-          const a = rand()*Math.PI*2, r = Math.sqrt(rand()), y = (rand()*2-1)*.85;
-          d.position.set(x + Math.cos(a)*r*4.4*s, (10.4 + y*3.1)*s, z + Math.sin(a)*r*4.4*s);
-          d.rotation.set((rand()-.5)*1.1, rand()*Math.PI*2, (rand()-.5)*.6, 'YXZ'); d.scale.setScalar(s*(.8 + rand()*.45)); d.updateMatrix(); cardIM.setMatrixAt(i*CARDS+c,d.matrix);
-        }
-        cityCol.push([x-.45*s,z-.45*s,x+.45*s,z+.45*s]);
-      });
-      fsc.add(trunkIM, limbIM, coreIM, cardIM);
+      // chunked, so far parks cost little: leaf cards go first with distance, then limbs, then the canopy and trunks
+      const trees = spots.map(([x,z,s]) => [x,z,s,rand()*Math.PI*2]); let leavesIn = false;
+      chunkIM(trunkGeo, barkMat, trees, (d,[x,z,s,yaw]) => { d.position.set(x,0,z); d.rotation.set(0,yaw,0); d.scale.setScalar(s); }, {chunk:1200, far:2400});
+      chunkIM(limbGeo, barkMat, trees, (d,[x,z,s,yaw],l) => { d.position.set(x,6.4*s,z); d.rotation.set(.75,yaw + l*2.1,0,'YXZ'); d.scale.setScalar(s); }, {per:LIMBS, chunk:1200, far:900});
+      chunkIM(new THREE.IcosahedronGeometry(3.2,1), coreMat, trees, (d,[x,z,s,yaw]) => { d.rotation.set(0,yaw,0); d.position.set(x,10.4*s,z); d.scale.set(1.3*s,1.05*s,1.3*s); }, {chunk:1200, far:3000});
+      chunkIM(new THREE.PlaneGeometry(5.6,4.2), leafMat, trees, (d,[x,z,s]) => {
+        const a = rand()*Math.PI*2, r = Math.sqrt(rand()), y = (rand()*2-1)*.85;
+        d.position.set(x + Math.cos(a)*r*4.4*s, (10.4 + y*3.1)*s, z + Math.sin(a)*r*4.4*s);
+        d.rotation.set((rand()-.5)*1.1, rand()*Math.PI*2, (rand()-.5)*.6, 'YXZ'); d.scale.setScalar(s*(.8 + rand()*.45)); }, {per:CARDS, chunk:1200, far:1500, need:() => leavesIn, ud:{cast:true}});
+      for (const [x,z,s] of spots) cityCol.push([x-.45*s,z-.45*s,x+.45*s,z+.45*s]);
       // cut the bark panel and the leafy branch out of the sheet; key out its grey background
       const sheet = new Image();
       sheet.onload = () => {
@@ -2407,11 +2889,9 @@ function buildScene(){
           const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; t.anisotropy = 8; return t; };
         const bark = cut(14,44,486,516,false); bark.wrapS = bark.wrapT = THREE.RepeatWrapping; bark.repeat.set(1,2.5);
         barkMat.map = bark; barkMat.color.setRGB(1,1,1); barkMat.needsUpdate = true;
-        leafMat.map = cut(522,44,476,352,true); leafMat.needsUpdate = true; cardIM.visible = true;
+        leafMat.map = cut(522,44,476,352,true); leafMat.needsUpdate = true; leavesIn = true;
       };
       sheet.src = 'assets/tree-sheet.jpg'; }
-    // the Shard, far off to the east
-    { const sh = new THREE.Mesh(new THREE.ConeGeometry(30,310,4), std(0x9fb4c8,{metalness:.6,roughness:.2})); sh.position.set(2300,155,700); sh.rotation.y = .3; fsc.add(sh); }
 
     /* ---- Tommy's tower and penthouse ---- */
     // the penthouse sits 110 m up, high enough to see over Whitehall to the Cenotaph and Trafalgar Square
@@ -2508,7 +2988,8 @@ function buildScene(){
     const tommy = buildTommy(); ph.add(tommy.root); attachGLB(tommy); wearChar(tommy, 'tommy-toon');
     const shadow = addShadow(ph, 0, 0, 1.1, .9);
     const P = {x:5.6, z:-5, yaw:Math.PI*.5, camYaw:-Math.PI*.35, pitch:.32, walk:0, speed:0};
-    Object.assign(MAP, {roads, cols:cityCol, obbs, bankX});
+    Object.assign(MAP, {roads, riverPoly:RIVER.poly,
+      roadsIn:(cx,cz,R) => { const out = new Set(); for (let i=Math.floor((cx-R)/BK); i<=Math.floor((cx+R)/BK); i++) for (let j=Math.floor((cz-R)/BK); j<=Math.floor((cz+R)/BK); j++) for (const ri of buckets.get(i*10007+j) || []) out.add(roads[ri]); return out; }});
 
     /* ---- the real London sky in free roam: time of day and live weather (the PM's cutscene always stays at night) ---- */
     // Five looks keyed to the sun, with the weather on top, eased over a few seconds. At night the city's windows,
@@ -2639,6 +3120,7 @@ function buildScene(){
       {name:'Buckingham Palace', at:new THREE.Vector3(BP.x,14,BP.z), size:150, desc:"The King's London residence, at the end of The Mall beyond the Victoria Memorial."},
       {name:'London Eye', at:new THREE.Vector3(bankX(860)+300,70,860), size:160, desc:"The 135-metre wheel on the South Bank, opened in 2000, looking straight across the river at Parliament."},
     ];
+    LANDMARKS.push(...MORE_LM);
     let state = 'off', stateT = 0, scopeI = 0, nearWhat = null;
     // Downing Street is closed: the officers at the gate turn Tommy away
     const GUARD_LINES = ['"Downing Street\'s closed to the public, sir. Keep moving."', '"No access without a pass. Step back from the gate, please."', '"I won\'t ask again, sir. Move along."'];
@@ -2647,7 +3129,7 @@ function buildScene(){
 
     const hits = (x,z,r) => x < -13.7 || x > 9.7 || z < -7.7 || z > 7.7 || colliders.some(([a,b,c,d]) => x > a-r && x < c+r && z > b-r && z < d+r);
     // on the street: buildings, landmarks and the Thames (except over Westminster Bridge) block the way
-    const onBridge = (x,z) => z > 954 && z < 976 && x < bankX(965)+266;
+    const onBridge = (x,z) => BRIDGES.some(b => { if (!b.walk) return false; const dx = x-b.x, dz = z-b.z; return Math.abs(dx*b.ux + dz*b.uz) < b.hl && Math.abs(dx*b.uz - dz*b.ux) < b.hw; });
     // footprints are bucketed in 50 m cells (built once, after the city is), so a test only looks at what's nearby
     const COLB = 50; let colIdx = null, colN = -1;
     const colIndex = () => { if (colN === cityCol.length + obbs.length) return colIdx;
@@ -2656,7 +3138,9 @@ function buildScene(){
       cityCol.forEach(c => put(c[0],c[1],c[2],c[3],c));
       obbs.forEach(o => { const R = Math.hypot(o[2],o[3]); put(o[0]-R,o[1]-R,o[0]+R,o[1]+R,o); });
       return colIdx; };
-    const hitsStatic = (x,z,r) => { if (Math.abs(x) > 1500 || z < -1150 || z > 1600 || (x > bankX(z)-6-r && x < bankX(z)+262+r && !onBridge(x,z))) return true;
+    // the minimap draws the buildings round Tommy from the same buckets
+    MAP.colsIn = (x0,z0,x1,z1) => { const out = new Set(), idx = colIndex(); for (let i=Math.floor(x0/COLB); i<=Math.floor(x1/COLB); i++) for (let j=Math.floor(z0/COLB); j<=Math.floor(z1/COLB); j++) for (const c of idx.get(i*100003+j) || []) out.add(c); return out; };
+    const hitsStatic = (x,z,r) => { if (x < -2400 || x > 4900 || z < -1150 || z > 1900 || (RIVER.inside(x,z,6+r) && !onBridge(x,z))) return true;
       const near = colIndex().get(Math.floor(x/COLB)*100003 + Math.floor(z/COLB)); if (!near) return false;
       for (const c of near){
         if (c.length === 4){ if (x > c[0]-r && x < c[2]+r && z > c[1]-r && z < c[3]+r) return true; }
@@ -2746,12 +3230,11 @@ function buildScene(){
         g.scale.setScalar(.95 + rand()*.1); return {g, body, legs, arms, speed:1.15 + rand()*.45, phase:rand()*6};
       }
       // roads joined end to end make the network; a dead end means a U-turn
-      const links = roads.map((r,i) => { const out = [[],[]];
-        roads.forEach((o,j) => { if (j === i) return;
-          for (const [e,ex,ez] of [[0,r.x1,r.z1],[1,r.x2,r.z2]]){
-            if (Math.hypot(o.x1-ex,o.z1-ez) < 12) out[e].push([j,1]);
-            if (Math.hypot(o.x2-ex,o.z2-ez) < 12) out[e].push([j,-1]); } });
-        return out; });
+      const ends = new Map(), EK = 24, ek = (x,z) => Math.floor(x/EK)*100003 + Math.floor(z/EK);
+      roads.forEach((o,j) => { for (const [dir,x,z] of [[1,o.x1,o.z1],[-1,o.x2,o.z2]]){ const k = ek(x,z); let l = ends.get(k); if (!l) ends.set(k, l = []); l.push([j,dir,x,z]); } });
+      const links = roads.map((r,i) => [[r.x1,r.z1],[r.x2,r.z2]].map(([ex,ez]) => { const out = [];
+        for (let a=-1;a<=1;a++) for (let b=-1;b<=1;b++) for (const [j,dir,x,z] of ends.get((Math.floor(ex/EK)+a)*100003 + Math.floor(ez/EK)+b) || []) if (j !== i && Math.hypot(x-ex,z-ez) < 12) out.push([j,dir]);
+        return out; }));
       const near = (cx,cz,R,main,cars) => { const out = new Set();
         for (let i=Math.floor((cx-R)/BK); i<=Math.floor((cx+R)/BK); i++) for (let j=Math.floor((cz-R)/BK); j<=Math.floor((cz+R)/BK); j++)
           for (const ri of buckets.get(i*10007+j) || []) if ((!main || roads[ri].w >= 14) && !(roads[ri].ped && cars)) out.add(ri);
@@ -2769,7 +3252,7 @@ function buildScene(){
           a.dir = rand() < .5 ? 1 : -1; a.s = rand()*r.len; a.lane = rand() < .5; a.side = rand() < .5 ? 1 : -1; a.off = offFor(a, r);
           at(a, tmp); const d = Math.hypot(tmp.x-cx, tmp.z-cz);
           if (d < rMin || d > rMax) continue;
-          if (a.kind === 'ped' ? hitsStatic(tmp.x,tmp.z,.4) : (tmp.x > bankX(tmp.z)-4 && !onBridge(tmp.x,tmp.z))) continue;
+          if (a.kind === 'ped' ? hitsStatic(tmp.x,tmp.z,.4) : (RIVER.inside(tmp.x,tmp.z,4) && !onBridge(tmp.x,tmp.z))) continue;
           a.g.position.set(tmp.x, a.kind === 'ped' ? 0 : .1, tmp.z); a.g.rotation.y = tmp.yaw; a.wait = 0; a.v = a.speed; return true;
         }
         return false;
@@ -2878,13 +3361,14 @@ function buildScene(){
     }
 
     { const geo = new THREE.BoxGeometry(1,1,1), d = new THREE.Object3D(), plinth = [], course = [], cornice = [];
-      const make = (mat, list) => { const im = new THREE.InstancedMesh(geo, mat, list.length);
-        list.forEach(([x,y,z,sx,sy,sz,rot],i) => { d.position.set(x,y,z); d.rotation.set(0,rot,0); d.scale.set(sx,sy,sz); d.updateMatrix(); im.setMatrixAt(i, d.matrix); }); fsc.add(im); };
+      const make = (mat, list, far) => chunkIM(geo, mat, list, (d,[x,z,y,sx,sy,sz,rot]) => { d.position.set(x,y,z); d.rotation.set(0,rot,0); d.scale.set(sx,sy,sz); }, {chunk:1200, far});
       for (const [x,z,w,dd,h,rot,curtain] of trims){
-        plinth.push([x,.6,z,w+.3,1.2,dd+.3,rot]);
-        if (h >= 9 && !curtain) course.push([x,3,z,w+.45,.32,dd+.45,rot]);
-        if (h >= 9) cornice.push([x,h-.3,z,w+1.1,.6,dd+1.1,rot]); }
-      make(std(0x8a8478,{roughness:.9}), plinth); make(std(0xe4dccb,{roughness:.85}), course); make(std(0xd8d0bd,{roughness:.85}), cornice); }
+        plinth.push([x,z,.6,w+.3,1.2,dd+.3,rot]);
+        if (h >= 9 && !curtain) course.push([x,z,3,w+.45,.32,dd+.45,rot]);
+        if (h >= 9) cornice.push([x,z,h-.3,w+1.1,.6,dd+1.1,rot]); }
+      make(std(0x8a8478,{roughness:.9}), plinth, 1300); make(std(0xe4dccb,{roughness:.85}), course, 1300); make(std(0xd8d0bd,{roughness:.85}), cornice, 3000); }
+    flushMerged();
+    fsc.traverse(o => { if (o.isInstancedMesh && !o.userData.fit) fitIM(o); });
     // real shadows: lit, solid things cast and receive; flat ground layers, glass and unlit materials don't cast
     fsc.traverse(o => { if (!o.isMesh || Array.isArray(o.material)) return; const m = o.material;
       if (m === outlineMat || m.isMeshBasicMaterial || m.isShaderMaterial || m.isSpriteMaterial) return;
@@ -2924,7 +3408,7 @@ function buildScene(){
       travel(){ travel(); return level; },
       level(){ return level; },
       update(t, dt){
-        stateT += dt;
+        stateT += dt; cullCity(); skyDome.position.set(camera.position.x, 0, camera.position.z);
         const k = input.keys;
         // the Thames drifts downstream with a slow ripple over it
         waterTex.offset.set(t*.0025, t*.008); ripple.offset.set(-t*.018, t*.011);
@@ -2979,9 +3463,11 @@ function buildScene(){
         if (state === 'scope'){
           const lm = LANDMARKS[scopeI]; v3.set(TEL.x, 1.65, TEL.z).add(P0);
           camera.position.copy(v3); camera.lookAt(lm.at);
-          // through the eyepiece nothing on the terrace (plants, railings) can block the view: clip everything within 25 m
-          if (camera.near !== 25){ camera.near = 25; camera.updateProjectionMatrix(); }
+          // through the eyepiece nothing in the apartment (plants, railings, its own walls) can block the view: clip everything within 40 m
+          if (camera.near !== 40){ camera.near = 40; camera.updateProjectionMatrix(); }
           const dist = v3.distanceTo(lm.at), f = Math.max(3, Math.min(40, 2*Math.atan(lm.size*.6/dist)*180/Math.PI));
+          // far landmarks (the Tower is 4 km off): the haze thins through the eyepiece, unless it's really foggy
+          if (fsc.fog.far > 900){ fsc.fog.far = Math.max(fsc.fog.far, dist*1.6); fsc.fog.near = Math.max(fsc.fog.near, dist*.6); }
           if (Math.abs(camera.fov - f) > .01){ camera.fov += (f - camera.fov)*.12; camera.updateProjectionMatrix(); }
           drawMinimap(P, LANDMARKS, P0);
           return;
@@ -3036,6 +3522,8 @@ function buildScene(){
           talkT -= dt;
           const atTube = !nearWhat && TUBE.some(e => Math.hypot(P.x - e.x - (e.face === 'e' ? 2 : 0), P.z - e.z - (e.face === 's' ? 2 : 0)) < 3.5);
           if (atTube){ freeHint('Westminster Station · Circle, District and Jubilee lines', true); drawCityMap(P, MAP, LANDMARKS); return; }
+          const st = !nearWhat && STATIONS.find(e => Math.hypot(P.x - e.x, P.z - e.z) < 3.5);
+          if (st){ freeHint(st.name + ' Station · ' + st.lines, true); drawCityMap(P, MAP, LANDMARKS); return; }
           freeHint(nearWhat === 'lift' ? "Take the lift up to Tommy's apartment" : nearWhat === 'gate' ? (talkT > 0 ? GUARD_LINES[talkI] : 'Talk to the armed officer') : null, nearWhat === 'gate' && talkT > 0);
           drawCityMap(P, MAP, LANDMARKS);
         } else {
@@ -3433,13 +3921,14 @@ function freeScope(lm){
 }
 // minimap: a dark street map in the open-world style, north up. Markers are colour-coded by kind (government purple,
 // sights gold, the Eye teal, the Tube as a roundel); a light cone shows where the camera is looking.
-const BLIP = {'Piccadilly Circus':'PI','Leicester Square':'LS','Chinatown':'CT','Soho Square':'SS','Carnaby Street':'CS','Centre Point':'CP','Portcullis House':'PC','Westminster Station':'U','10 Downing Street':'10','Cabinet Office':'CO','Big Ben':'BB','Houses of Parliament':'HP','Westminster Abbey':'WA','The Cenotaph':'C','Trafalgar Square':'TS','Buckingham Palace':'BP','London Eye':'LE'};
+const BLIP = {"St Paul's Cathedral":'SP','Tower of London':'TL','Tower Bridge':'TB','The Shard':'SH','The Gherkin':'G','The Walkie-Talkie':'WT','The Monument':'M','Tate Modern':'TM',
+  'Millennium Bridge':'MB',"Cleopatra's Needle":'CN','Westminster Cathedral':'WC','Wellington Arch':'AR','Marble Arch':'MA','Hyde Park':'HY','Belgrave Square':'BS','Piccadilly Circus':'PI','Leicester Square':'LS','Chinatown':'CT','Soho Square':'SS','Carnaby Street':'CS','Centre Point':'CP','Portcullis House':'PC','Westminster Station':'U','10 Downing Street':'10','Cabinet Office':'CO','Big Ben':'BB','Houses of Parliament':'HP','Westminster Abbey':'WA','The Cenotaph':'C','Trafalgar Square':'TS','Buckingham Palace':'BP','London Eye':'LE'};
 const BLIP_KIND = {'10 Downing Street':'gov','Cabinet Office':'gov','Houses of Parliament':'gov','Portcullis House':'gov','Westminster Station':'tube','London Eye':'eye'};
 // the accent follows the time of day, so it's read from CSS (at most once a second)
 let accentCache = '#A35CF0', accentAt = -1e9;
 const accentNow = () => { const t = performance.now(); if (t - accentAt > 1000){ accentAt = t; accentCache = getComputedStyle(document.body).getPropertyValue('--accent').trim() || accentCache; } return accentCache; };
 function mapBlip(g, lm, x, y){
-  const kind = BLIP_KIND[lm.name] || 'sight', label = BLIP[lm.name] || '?';
+  const kind = lm.tube ? 'tube' : BLIP_KIND[lm.name] || 'sight', label = BLIP[lm.name] || '?';
   g.lineWidth = 2; g.strokeStyle = '#000';
   if (kind === 'tube'){
     g.fillStyle = '#fff'; g.beginPath(); g.arc(x,y,9,0,7); g.fill(); g.stroke();
@@ -3495,7 +3984,7 @@ function drawMinimap(P, landmarks, P0){
   g.restore();
   mapRim(g, R);
   g.font = '700 10px Arial,sans-serif';
-  rimSpread(landmarks.map(lm => ({lm, a:Math.atan2(lm.at.z - P0.z, lm.at.x - P0.x)})), R).forEach(b => mapBlip(g, b.lm, b.x, b.y));
+  rimSpread(landmarks.filter(lm => lm.major || Math.hypot(lm.at.x - P0.x, lm.at.z - P0.z) < 1300).map(lm => ({lm, a:Math.atan2(lm.at.z - P0.z, lm.at.x - P0.x)})), R).forEach(b => mapBlip(g, b.lm, b.x, b.y));
 }
 // E or a click on the hint: most things happen in the engine, the lift needs a fade
 async function roamInteract(){
@@ -3506,7 +3995,7 @@ async function roamInteract(){
   const lvl = api.travel();
   $('roam').querySelector('.objective b').textContent = lvl === 'street' ? 'Central London' : "Tommy's apartment complex";
   $('objText').textContent = lvl === 'street'
-    ? 'Explore London on foot. Whitehall, Trafalgar Square and Big Ben are all close by. The lift back up is at the tower door.'
+    ? 'Explore London on foot, from Hyde Park and Belgravia to St Paul\'s and the Tower. The lift back up is at the tower door.'
     : 'Back home. The telescope on the terrace looks out over London.';
   await new Promise(r => setTimeout(r, 400));
   await fadeTo(false);
@@ -3520,33 +4009,32 @@ function drawCityMap(P, M, landmarks){
   g.fillStyle = '#262a33'; g.fillRect(0,0,W,W);
   // parks and squares
   const rect = (o, fill) => { if (!near(o.x,o.z,Math.max(o.w,o.d))) return; g.save(); g.translate(X(o.x),Z(o.z)); g.rotate(-o.rot); g.fillStyle = fill; g.fillRect(-o.w*s/2,-o.d*s/2,o.w*s,o.d*s); g.restore(); };
-  M.greens.forEach(o => rect(o, '#3d7a47')); M.plazas.forEach(o => rect(o, o.col));
-  // water: the Thames and the St James's Park lake
-  g.fillStyle = '#2f73b5'; g.strokeStyle = '#6fb2e6'; g.lineWidth = 2; g.beginPath();
-  for (let z = P.z - 220; z <= P.z + 220; z += 10) g.lineTo(X(M.bankX(z)), Z(z));
-  for (let z = P.z + 220; z >= P.z - 220; z -= 10) g.lineTo(X(M.bankX(z) + 260), Z(z));
-  g.closePath(); g.fill(); g.stroke();
-  if (near(M.lake.x, M.lake.z, M.lake.rx)){ g.beginPath(); g.ellipse(X(M.lake.x), Z(M.lake.z), M.lake.rx*s, M.lake.ry*s, M.lake.rot, 0, 7); g.fill(); g.stroke(); }
+  const poly = (pts, fill) => { g.fillStyle = fill; g.beginPath(); pts.forEach(([x,z],i) => i ? g.lineTo(X(x),Z(z)) : g.moveTo(X(x),Z(z))); g.closePath(); g.fill(); };
+  M.greens.forEach(o => o.poly ? poly(o.poly, '#3d7a47') : rect(o, '#3d7a47')); M.plazas.forEach(o => rect(o, o.col));
+  // water: the Thames and the lakes
+  poly(M.riverPoly, '#2f73b5'); g.strokeStyle = '#6fb2e6'; g.lineWidth = 2; g.stroke(); g.fillStyle = '#2f73b5';
+  for (const L of M.lakes) if (near(L.x, L.z, L.rx)){ g.beginPath(); g.ellipse(X(L.x), Z(L.z), L.rx*s, L.ry*s, L.rot, 0, 7); g.fill(); g.stroke(); }
   // streets: side streets grey, main roads bright, The Mall red
   g.lineCap = 'round';
-  for (const pass of [0,1,2]) for (const r of M.roads){
+  const roadsNear = M.roadsIn(P.x, P.z, V + 40);
+  for (const pass of [0,1,2]) for (const r of roadsNear){
     const kind = r.mall ? 2 : r.w >= 14 ? 1 : 0; if (kind !== pass) continue;
     if (!near((r.x1+r.x2)/2, (r.z1+r.z2)/2, r.len/2)) continue;
     g.strokeStyle = kind === 2 ? '#c4554a' : kind === 1 ? '#e8ebf2' : '#8a909e'; g.lineWidth = Math.max(2, r.w*s);
     g.beginPath(); g.moveTo(X(r.x1),Z(r.z1)); g.lineTo(X(r.x2),Z(r.z2)); g.stroke(); }
   // buildings, with a lighter top edge so blocks read as solid
-  for (const [a,b,cc,d] of M.cols){ if (cc < P.x-V || a > P.x+V || d < P.z-V || b > P.z+V || cc-a < 1.5) continue;
-    g.fillStyle = '#4a5060'; g.fillRect(X(a),Z(b),(cc-a)*s,(d-b)*s); g.fillStyle = '#5d6475'; g.fillRect(X(a),Z(b),(cc-a)*s,Math.min(2,(d-b)*s)); }
-  g.fillStyle = '#4a5060';
-  for (const [cx,cz,hw,hd,c,sn] of M.obbs){ if (Math.abs(cx-P.x) > V+20 || Math.abs(cz-P.z) > V+20) continue;
-    g.save(); g.translate(X(cx),Z(cz)); g.rotate(-Math.atan2(sn,c)); g.fillRect(-hw*s,-hd*s,hw*2*s,hd*2*s); g.restore(); }
+  for (const o of M.colsIn(P.x-V, P.z-V, P.x+V, P.z+V)){
+    if (o.length === 4){ const [a,b,cc,d] = o; if (cc-a < 1.5) continue;
+      g.fillStyle = '#4a5060'; g.fillRect(X(a),Z(b),(cc-a)*s,(d-b)*s); g.fillStyle = '#5d6475'; g.fillRect(X(a),Z(b),(cc-a)*s,Math.min(2,(d-b)*s)); }
+    else { const [cx,cz,hw,hd,c,sn] = o; g.fillStyle = '#4a5060'; g.save(); g.translate(X(cx),Z(cz)); g.rotate(-Math.atan2(sn,c)); g.fillRect(-hw*s,-hd*s,hw*2*s,hd*2*s); g.restore(); } }
   mapPlayer(g, R, P);
   g.restore();
   mapRim(g, R);
   g.font = '700 10px Arial,sans-serif';
   const rim = [];
   landmarks.forEach(lm => { const x = X(lm.at.x), y = Z(lm.at.z), dx = x-R, dy = y-R;
-    if (Math.hypot(dx,dy) > R-30) rim.push({lm, a:Math.atan2(dy,dx)}); else mapBlip(g, lm, x, y); });
+    // off the map, only the big sights and anything within a walk get a marker on the rim
+    if (Math.hypot(dx,dy) > R-30){ if (lm.major || Math.hypot(lm.at.x-P.x, lm.at.z-P.z) < 1300) rim.push({lm, a:Math.atan2(dy,dx)}); } else mapBlip(g, lm, x, y); });
   rimSpread(rim, R).forEach(b => mapBlip(g, b.lm, b.x, b.y));
 }
 $('hint').addEventListener('click', roamInteract);

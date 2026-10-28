@@ -83,6 +83,35 @@ A game starring Tommy (no last name), set in Westminster, London.
   - **Naming (user's rule):** in anything the player sees, it's **"Tommy's apartment complex"** (his home is "the apartment"), never "penthouse". The code and these notes still say penthouse (`ph`, `P0`, the `tommy-save` marker), which is fine.
   - The penthouse sits 110 m up a tower at world (200, 380). The world is in metres: +x east, +z south, Trafalgar Square at the origin.
   - Central London is laid out with roughly real geography: Trafalgar Square (Nelson's Column, lions, fountains, National Gallery, St Martin-in-the-Fields), Admiralty Arch and The Mall, the Victoria Memorial, Buckingham Palace, Whitehall with Horse Guards and the Cenotaph, Parliament Square, Big Ben, the Palace of Westminster, Westminster Abbey, the Thames, Westminster Bridge, the London Eye and County Hall, plus St James's Park and Green Park.
+    - St James's Park lies south of The Mall and parallel to it (`PARK_SJ.rot` .363). It used to be turned the wrong way and cross The Mall.
+  - **Greater London** (a section of the same name in `buildFree`) stretches the map from Hyde Park (x −2400) to past the Tower (x 4900), and from z −1150 to 1900. Real places are scaled about 1.15 from Trafalgar Square, nudged where the older layout bends the truth. Landmark heights and footprints follow the real buildings.
+    - The Wikipedia and image hosts are blocked from the cloud sessions, so the landmarks are built from architectural knowledge, not photos. If the user supplies reference photos, use them to refine the shapes.
+    - **The Thames (`RIVER`)** is a centreline polyline. It runs `bankX(z)+130` north past Westminster, then a Catmull-Rom curve bends it east at Hungerford Bridge, past Temple and Blackfriars, under the City's bridges to the Tower and Tower Bridge.
+      - It's 260 m wide (`RIV_W` 130 each side). `RIVER.dist`/`inside` (bucketed), `side` (+1 north/west bank, −1 south/east), `at` (nearest point, fractional index, flow direction), `off`/`offAt` (offset points; positive is the north/west bank).
+      - The water lies 4 m down (`WATER_Y`) between granite river walls, with low parapets on both banks broken at the bridges. The ground is one big `ShapeGeometry` with the river cut out as a hole.
+    - **Bridges** (`bridge()`, `BRIDGES`) are street-level decks (top at y .02) on piers with arches under them: Westminster (green, seven arches), Hungerford with the Golden Jubilee footbridges' white pylons (its railway down the middle blocks), Waterloo, Blackfriars (red and cream), the Blackfriars railway bridge with its solar-roofed station (not walkable), the Millennium footbridge, Southwark (green and yellow), London Bridge and Tower Bridge.
+      - Tommy can walk across every walkable deck (`onBridge`), and the road ones carry traffic.
+    - **Riverside roads** break at every bridge so traffic can turn onto it: Victoria Embankment from Westminster Bridge round to Blackfriars, then Upper and Lower Thames Street to the Tower, and Bankside on the south bank from Waterloo to Tower Bridge. Plane trees line them.
+    - **Underground stations** (`station()`, `STATIONS`): Embankment, Temple, Blackfriars, St Paul's, Tower Hill, St James's Park (under 55 Broadway), Victoria, Green Park and Bond Street (plus Westminster under Portcullis House).
+      - Each has a roundel, a bar naming its lines and a roundel post. Walking up to one shows "Name Station · lines". They're tube blips on the minimap. The trains don't run yet.
+    - **The City:** the Strand continues to Aldwych, then Fleet Street and Ludgate Hill to St Paul's Churchyard, Cheapside to Bank, and Cannon Street, Eastcheap and Great Tower Street to Tower Hill. King William Street runs to London Bridge, New Bridge Street and Queen Victoria Street to Blackfriars, and Peter's Hill to the Millennium Bridge (pedestrians only).
+      - **St Paul's Cathedral** at (2378, −699): nave, transepts and apse; the dome on a colonnaded drum, lantern, golden ball and cross at 111 m; twin west towers and the two-storey portico. It uses the `'wren'` stone texture (`stoneTex`).
+      - Also the Monument, Tate Modern and the Shard (at London Bridge). The City's towers: the Gherkin, the Walkie-Talkie, the Cheesegrater, 22 Bishopsgate and Tower 42.
+    - **The Tower of London** is turned to the river's direction (`TOW`, `towW(lx,lz)`; rotated collisions).
+      - It has the White Tower with three square and one round turret under ogee caps, inner and outer curtain walls with their towers, St Thomas's Tower over Traitors' Gate, the Byward and Middle Towers, the Waterloo Block and the moat as lawns.
+      - **Tower Bridge** is just downstream: Gothic towers (`'gothic'` texture), high walkways and blue suspension chains to the shore towers.
+    - **West:** Victoria station (frontage, Grosvenor Hotel, train sheds) on Terminus Place, Victoria Street, Westminster Cathedral (striped brick, 87 m campanile), and 55 Broadway over St James's Park station with Birdcage Walk, Petty France and Buckingham Gate.
+      - Piccadilly now runs on to the Hyde Park Corner roundabout and Wellington Arch, with Constitution Hill, Grosvenor Place, Knightsbridge and Park Lane.
+      - Hyde Park (a polygon lawn, `HYDE`) has the Serpentine, and Marble Arch stands at its corner. Oxford Street runs from Bayswater Road, with New Bond Street.
+      - Belgravia is white stucco (`STUCCO`) round Belgrave and Eaton Squares. Mayfair has Grosvenor Square.
+    - **Districts** (`district()`): the South Bank is glass and cream, Belgravia stucco, the City glass (`GLASS2`) and stone with taller blocks east of x 2600, Fleet Street Portland stone, Victoria Street glass offices, and Mayfair and Soho brick.
+  - **Performance (the map is about four times bigger and draws fewer calls than before):**
+    - The street grid's blocks and every road are merged per material into 500 m and 600 m chunks (`mgrp`/`quad`/`mbox`, built by `flushMerged`).
+    - The new landmarks are built in groups and merged per material by `bakeGroup`.
+    - Kerbs are one long stone per unbroken run. Kerbs, lamps, trims and trees are instanced per chunk (`chunkIM`), and every instanced mesh gets a bounding sphere round its instances (`fitIM`). r128 culls instanced meshes by the base geometry alone, which used to make kerbs and trees vanish whenever Trafalgar Square was off screen.
+    - `cullCity()` hides chunks beyond the fog, or sooner for small things (kerbs 700 m, limbs 900 m, leaf cards 1.5 km), each frame.
+    - Traffic links are found through an endpoint grid, not every pair of roads. The minimap reads nearby roads and buildings from the buckets (`MAP.roadsIn`, `MAP.colsIn`).
+    - The free-roam sky dome follows the camera (the map is wider than the dome).
   - Controls: WASD/arrows to move, Shift to run, drag to turn the camera, E to interact, Esc to pause.
   - **Touch screens** (`pointer:coarse`) get a left thumbstick (analogue: a half push walks slower), a RUN toggle and a gold E button. Drag anywhere else to turn the camera; the camera follows one pointer only.
     - On touch screens the minimap moves to the top-right, with Pause under it. Cutscenes advance by tap, and Skip is a button.
@@ -90,10 +119,10 @@ A game starring Tommy (no last name), set in Westminster, London.
   - There's a minimap with landmark blips, and a telescope on the terrace that cycles through the landmarks with facts. The TV shows the morning news.
     - The minimap is a dark open-world-style street map, north up, with a purple (`--accent`) rim and N/E/S/W letters.
       - Side streets are grey, main roads bright, The Mall red. Parks are green, the Thames and the lake blue, Horse Guards and Trafalgar Square plazas, buildings slate (`MAP` in `buildFree`).
-      - Blips are colour-coded: government purple (10, CO, HP, PC), sights gold, the Eye teal, the Tube as a roundel. Off-map blips are spread along the rim (`rimSpread`).
+      - Blips are colour-coded: government purple (10, CO, HP, PC), sights gold, the Eye teal, the Tube as a roundel. Off-map blips are spread along the rim (`rimSpread`), but only for the big sights (`major`) and anything within 1.3 km.
       - Tommy is an accent arrow under a light cone showing the camera's view. The penthouse view is a coloured floor plan with the TV, bed, lift and telescope.
   - A private **lift** on the penthouse's north wall (E) takes Tommy down to the street. He comes out at "The Embankment Tower" lobby door on the tower's south face, world (198, 391.5), and that door takes him back up.
-  - At street level he walks the whole map in world coordinates. Buildings (`cityCol`), landmarks and the Thames block him, except on Westminster Bridge. The minimap switches to a city map.
+  - At street level he walks the whole map in world coordinates. Buildings (`cityCol`), landmarks and the Thames block him, except on the bridges. The minimap switches to a city map.
   - The streets use real road surfaces: tarmac textures with UK markings (double yellows, centre dashes, lane lines on main roads) and a red Mall.
     - Granite kerbs (instanced) are broken at junctions. There are black lamp posts on main roads, and zebra crossings with Belisha beacons. Pavements are York stone slabs.
   - The layout is deliberately tidy. An even 100 m street grid with 10 m side streets runs around the main roads (Whitehall, The Mall, the Strand, Northumberland Ave, Pall Mall, Charing Cross Rd, the Embankment, Bridge St/Westminster Bridge, Parliament Square).
@@ -109,7 +138,7 @@ A game starring Tommy (no last name), set in Westminster, London.
   - **Soho** (north of Trafalgar Square, `inSoho()`):
     - Boundaries: Oxford Street (z −1000), Regent Street (Piccadilly Circus (−465,−277) to Oxford Circus (−1010,−1000), `regentX`), Charing Cross Road (x 0, extended north to St Giles Circus), and Coventry Street / Leicester Square to the south.
     - Shaftesbury Avenue runs diagonally to Cambridge Circus (0,−700), and Piccadilly and Haymarket meet at the Circus.
-    - The map now reaches z −1150, and the generic grid runs from z −1100.
+    - The generic grid runs from x −2400 to 4900 and z −1100 to 1900.
     - It has **its own tidy grid** of 8 m streets (XS/ZS). Carnaby Street (x −635) is pedestrian-only (`ped`, no cars). Gerrard Street (z −380) is Chinatown; Old Compton Street is z −560.
     - The streets are lined with narrow frontages built by `frontage()`:
       - Each has a brick or stucco facade with sash windows and a made-up shop at street level (`sohoFacade`: café, bar, records…). Signs and windows glow at night (`sohoMats`).
@@ -124,7 +153,7 @@ A game starring Tommy (no last name), set in Westminster, London.
       - Centre Point (117 m) at (28,−960).
       - All are telescope and minimap landmarks (PI, LS, CT, SS, CS, CP).
     - Collision is a bucketed index (`colIndex`, 50 m cells) over `cityCol` AABBs plus rotated footprints (`obbs`).
-    - Through the telescope the camera clips everything within 25 m (`camera.near`), so terrace plants never block a landmark.
+    - Through the telescope the camera clips everything within 40 m (`camera.near`), so the apartment's plants and its own walls never block a landmark. The haze thins through the eyepiece (unless it's foggy), so St Paul's and the Tower show from 2–4 km.
   - **Street life** (`life` in `buildFree`): about 64 cars, black cabs and red double-deckers drive on the left along `roads` and brake for Tommy. Buses stay on main roads. About 100 pedestrians walk the pavements, sidestep each other and Tommy, and never overlap.
     - Everything is pooled within `LIFE_R` of Tommy and recycled out of sight. Cars and people block Tommy.
     - **No traffic softlocks:** a car that moves into Tommy pushes him to its nearest side (`life.pushOut`, never into a wall). If he's still caught inside a car or person (`hitsMoving`), only static collisions (`hitsStatic`) block his steps, so he can always walk out.
