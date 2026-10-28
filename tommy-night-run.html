@@ -89,13 +89,10 @@ body.no-gl{background:radial-gradient(120% 80% at 70% 30%,#2a2250 0%,#101634 45%
 .hud .place{font-family:var(--script);font-size:30px;line-height:1.1;color:var(--gold)}
 .hud .day{font-size:15px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--text)}
 /* daylight, rain and fog skies are bright, so the small HUD text carries its own shadow */
-.hud .day,.hud .wx,.hud .place{text-shadow:0 1px 0 #000,0 0 6px rgba(0,0,0,.85),0 0 14px rgba(0,0,0,.55)}
+.hud .day,.hud .wx,.hud .place,.hud .align{text-shadow:0 1px 0 #000,0 0 6px rgba(0,0,0,.85),0 0 14px rgba(0,0,0,.55)}
 .hud .wx{display:flex;align-items:center;justify-content:flex-end;gap:7px;margin-top:4px;font-size:15px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text)}
-/* Tommy's alignment, stamped under the weather */
-.hud .align{display:inline-block;margin-top:10px;white-space:nowrap;text-shadow:none;
-  background:#000;border:2px solid var(--accent);box-shadow:3px 3px 0 var(--accent-deep);padding:3px 10px 4px;
-  font-weight:700;font-size:17px;line-height:1.05;letter-spacing:.06em;text-transform:uppercase;color:var(--gold)}
-.hud .align small{display:block;font-size:.62em;letter-spacing:.2em;color:var(--muted)}
+/* Tommy's alignment, a line under the weather in the same style */
+.hud .align{margin-top:2px;font-size:15px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text)}
 .hud .wx svg{width:20px;height:20px;flex:none;fill:none;stroke:var(--gold);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 1px 0 #000)}
 /* the accent shifts with the real time of day over London (night is the default above) */
 body.phase-dawn{--accent:#C46BE0;--accent-deep:#6A2C9A;--accent-light:#FFB8D9}
@@ -247,7 +244,7 @@ body.in-story .ui,body.in-story .shade{display:none}
   .logo{position:fixed;top:calc(env(safe-area-inset-top,0px) + 18px);left:max(16px,env(safe-area-inset-left,0px))}
   .logo .word{font-size:56px}
   .logo .plate{font-size:26px}
-  .hud .align{margin-top:6px;font-size:12px;padding:2px 7px 3px}
+  .hud .align{font-size:12px}
   .banner{height:60px}.banner h2{font-size:36px}
   .row{font-size:18px;min-height:38px}
   .hud .place,.hud .day{display:none}
@@ -282,7 +279,7 @@ body.in-story .ui,body.in-story .shade{display:none}
     <div class="place">Westminster</div>
     <div class="day" id="day">London</div>
     <div class="wx" id="wx"><span id="wxIco"></span><span id="wxText"></span></div>
-    <div class="align"><small>Alignment</small>Chaotic Neutral</div>
+    <div class="align">Alignment · Chaotic Neutral</div>
   </div>
 
   <div class="prompts" id="prompts">
