@@ -8,7 +8,10 @@ A game starring Tommy (no last name), set in Westminster, London.
   - Props on the old head and arms (`userData.prop`: the seasonal hats and the sparkler) move across to the model.
   - The toon rigs from `buildTommy()` / `figure()` show until the files load, or if they fail.
   - On the menu, `menuPose()` gives Tommy's model a stance once it's on: feet apart, weight on one leg, hands in his pockets (the hands are shrunk away, since the arms have no elbows), chin up and head cocked. On Bonfire Night his right arm stays out with the sparkler.
-- If either model changes, copy it in again and regenerate its `-glb.txt` with `[Convert]::ToBase64String`. Publish with `assets/tommy-toon-glb.txt` and `assets/stephen-marsh-glb.txt` in `files`; the itch build includes them.
+- If either model changes, copy it in again and regenerate its `-glb.txt` with `[Convert]::ToBase64String`, and its `-glb.js`, which holds the same base64 as `(window.TOMMY_GLB = window.TOMMY_GLB || {})['<name>'] = '...';`. Publish with `assets/tommy-toon-glb.txt` and `assets/stephen-marsh-glb.txt` in `files`; the itch build includes them.
+- **Loading is robust** (`loadChar`): it fetches `-glb.txt`. Pages opened straight from disk (file://) can't fetch, so it falls back to loading `assets/<name>-glb.js` as a script.
+  - If the CDN's GLTFLoader didn't arrive, it loads the local copy `assets/GLTFLoader.js` (three r128, MIT).
+  - If the model still fails, the menu toast says so, instead of silently leaving the stand-in cartoon Tommy (the user once saw "his OG model" this way).
 
 **The rigged Tripo model is off** (`USE_GLB = false`). Setting `USE_GLB = true` brings back **the user's model `assets/tommy.glb`**: "tommy model 2.glb" from `Documents\Tommy - The GTA Game`, a Tripo export. It's loaded with GLTFLoader and SkeletonUtils (three r128 examples/js from jsdelivr) and attached by `attachGLB(rig)`.
 - Tripo's rig was unusable: the bones had no rest transforms, the template skeleton faced +x, and nearly every vertex was weighted to the hips. `build/rig-glb.py` (run with `py -I`) re-rigs it:
@@ -122,17 +125,23 @@ A game starring Tommy (no last name), set in Westminster, London.
       - **Shoreditch:** murals over brick shopfronts (`shopTex(..., tag)`, including "TOMMY WAS HERE") along Shoreditch High Street and Bethnal Green Road, a container market ("Shoreditch Yard", a made-up name), and St Leonard's church. **Liverpool Street station** stands on Bishopsgate.
       - `shopRow(pts, off, mats)` lines a road with merged, rotated shopfronts (Brick Lane, Shoreditch). Camden has its own loop.
     - Every `lawn()` keeps the street grid off its ground (`zones`).
-    - At the end of the build, every other stationary object in the scene is also distance-culled (`cullables`): the older landmarks, Downing Street's railings, the guards. The sky, the apartment, Tommy, rain and snow, the servants and street life are left out, because the game shows and hides those itself.
+    - At the end of the build, every other stationary object in the scene is also distance-culled (`cullables`): the older landmarks, Downing Street's railings, the guards. Small ones go sooner: under 15 m across at 700 m, under 40 m at 1.5 km. The sky, the apartment, Tommy, rain and snow, the servants and street life are left out, because the game shows and hides those itself.
     - **Districts** (`district()`): Whitechapel and Wapping are brick (x > 4300), Shoreditch and Spitalfields brick and glass, Camden and Islington brick and stucco, the King's Cross area glass and brick; the South Bank is glass and cream, Belgravia stucco, the City glass (`GLASS2`) and stone with taller blocks east of x 2600, Fleet Street Portland stone, Victoria Street glass offices, and Mayfair and Soho brick.
   - **Performance (the map is about eight times its old size and still draws fewer calls than before):**
     - The cloud sessions' headless browser has no GPU and runs about 1 fps on the street. That's the software compositor, not the game: driven by hand, a frame's logic takes 1–5 ms and its drawing 6–90 ms even in software. Judge speed on a real device.
-    - The street grid's blocks and every road are merged per material into 500 m and 600 m chunks (`mgrp`/`quad`/`mbox`, built by `flushMerged`).
+    - The street grid's buildings and every road are merged per material into 800 m chunks (`mgrp`/`quad`/`mbox`, built by `flushMerged`). Each road keeps its own layer height inside its material's mesh.
+    - The grid looks up zones and main roads through buckets (`rIdx`, the road `buckets`), and Soho's frontages check what already stands through a snapshot index. Free roam builds in about 3 s in the headless test browser.
     - The new landmarks are built in groups and merged per material by `bakeGroup`.
     - Kerbs are one long stone per unbroken run. Kerbs, lamps, trims and trees are instanced per chunk (`chunkIM`), and every instanced mesh gets a bounding sphere round its instances (`fitIM`). r128 culls instanced meshes by the base geometry alone, which used to make kerbs and trees vanish whenever Trafalgar Square was off screen.
     - `cullCity()` hides chunks beyond the fog, or sooner for small things (kerbs 700 m, limbs 900 m, leaf cards 1.5 km), each frame.
     - Traffic links are found through an endpoint grid, not every pair of roads. The minimap reads nearby roads and buildings from the buckets (`MAP.roadsIn`, `MAP.colsIn`).
     - The free-roam sky dome follows the camera (the map is wider than the dome).
   - Controls: WASD/arrows to move, Shift to run, drag to turn the camera, E to interact, Esc to pause.
+  - **Stealing cars and driving** (`drive`, `driveStep`, `stealCar`, `leaveCar` in `buildFree`): E beside any car, black cab or bus ("Steal the black cab") takes it out of the traffic (`life.take`). Tommy is hidden at the wheel.
+    - W/S or the stick drive (up to about 58 mph, buses 34), A/D steer (less lock at speed), Space is the handbrake.
+    - Buildings, the river (bridges are fine), lamp posts, trees, other cars and people stop it with a bounce (`carBlocked`). Traffic brakes for it.
+    - A chase camera swings in behind (drag to look round), the FOV widens with speed, and a speedometer shows mph (`#speedo`).
+    - E pulls over, and Tommy gets out on the driver's side (the right; British cars), else the other side or the ends. The car stays parked (`life.drop`) until he's far away, when the traffic pool reuses it.
   - **Touch screens** (`pointer:coarse`) get a left thumbstick (analogue: a half push walks slower), a RUN toggle and a gold E button. Drag anywhere else to turn the camera; the camera follows one pointer only.
     - On touch screens the minimap moves to the top-right, with Pause under it. Cutscenes advance by tap, and Skip is a button.
   - The penthouse's inside walls (north, east and the bedroom partition) use **the same slate-blue striped wallpaper as Tommy's flat in the cutscene** (`wallpaper`, at true scale via `boxUV`), with white skirting. The ceiling stays white. Keep the two consistent.
@@ -146,7 +155,11 @@ A game starring Tommy (no last name), set in Westminster, London.
   - The streets use real road surfaces: tarmac textures with UK markings (double yellows, centre dashes, lane lines on main roads) and a red Mall.
     - Granite kerbs (instanced) are broken at junctions. There are black lamp posts on main roads, and zebra crossings with Belisha beacons. Pavements are York stone slabs.
   - The layout is deliberately tidy. An even 100 m street grid with 10 m side streets runs around the main roads (Whitehall, The Mall, the Strand, Northumberland Ave, Pall Mall, Charing Cross Rd, the Embankment, Bridge St/Westminster Bridge, Parliament Square).
-    - Each grid cell holds one 78 m mansion block (or four 34 m blocks next to a main road), at even heights of 21/24/27 m with district materials.
+    - Each grid cell's block (78 m, or four 34 m blocks next to a main road) splits into one, four or three buildings (`cellBlock`), each with its own height and colour (`bld`, with a steady hash `hsh`, so the city never changes between runs).
+      - **Facades:** three neutral textures (`MASONRY`, `SMOOTH`, `GLASS_T`), tinted per building through vertex colours from `PAL` (brick reds and yellows, pastel stucco, stone, glass tints). A chunk costs one draw call per kind, whatever the colours.
+      - **Shopfronts:** most masonry buildings have a 4.2 m row of shops (`shopMats`: coloured fascias, made-up names, windows lit at night) with striped awnings every 8 m.
+      - **Roofs:** a slate mansard with dormers and chimney stacks; flat with air-con units, water tanks and lift housings; or, for glass, a stepped crown with plant and sometimes a mast. Now and then a glass building rises 15–40 m higher.
+      - Awnings, dormers, chimney pots and roof plant are one vertex-coloured material (`paint`, via `cquad`/`cbox`), in a detail layer dropped beyond 900 m.
     - Whitehall has a continuous 26 m Portland-stone frontage. Don't go back to random scattered buildings. (Soho has its own, finer tidy grid; see below.)
     - On Whitehall's west side, between Horse Guards and the Cenotaph, stand the **Cabinet Office (70 Whitehall)** and **Downing Street** (`DS`).
       - Downing Street is a gated cul-de-sac with Numbers 10–12 in black brick on its north side and a constable on the door of No. 10.
@@ -236,4 +249,4 @@ A game starring Tommy (no last name), set in Westminster, London.
   - It's a C# launcher (`build\launcher\TommyLauncher.cs`, compiled with the Windows .NET Framework `csc.exe`). It embeds `build\game.html`, `audio\*.mp3`, `assets\water.jpg` and `assets\tree-sheet.jpg`, and unpacks them to `%LOCALAPPDATA%\Tommy\game`.
   - It serves them from a tiny web server on 127.0.0.1, because file:// pages can't fetch audio or read image pixels, and opens a chromeless Edge app window. The exe exits when that window closes, so Quit Game closes it.
   - It needs internet for three.js and the fonts. The itch.io package is still removed.
-- The running/jumping game mechanic was removed. Gameplay beyond the opening cutscene hasn't been designed yet.
+- The running/jumping game mechanic was removed. Beyond the opening cutscene, gameplay so far is free roam with car stealing and driving; missions haven't been designed yet.
