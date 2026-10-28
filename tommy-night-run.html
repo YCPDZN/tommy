@@ -222,6 +222,22 @@ body.in-story .ui,body.in-story .shade{display:none}
 .scope h3{margin:0;font-family:var(--logo);font-weight:400;font-size:clamp(26px,3vw,36px);line-height:1.05;text-transform:uppercase}
 .scope p{margin:0;font-size:18px;line-height:1.35;color:var(--text)}
 .scope .prompts{position:static;justify-content:flex-start;margin-top:6px}
+.minimap{pointer-events:auto;cursor:pointer}
+.bigmap{position:fixed;inset:0;z-index:6;background:#14161c;touch-action:none}
+.bigmap canvas{position:absolute;inset:0;width:100%;height:100%;cursor:grab}
+.bigmap canvas:active{cursor:grabbing}
+.bm-head{position:absolute;top:calc(env(safe-area-inset-top,0px) + 20px);left:max(16px,calc(env(safe-area-inset-left,0px) + 3vw));display:flex;flex-direction:column;
+  background:rgba(0,0,0,.72);padding:8px 14px;border-left:4px solid var(--accent);pointer-events:none}
+.bm-head b{font-family:var(--logo);font-weight:400;font-size:28px;line-height:1.05;text-transform:uppercase}
+.bm-head span{font-size:15px;color:var(--muted)}
+.bm-legend{position:absolute;left:max(16px,calc(env(safe-area-inset-left,0px) + 3vw));bottom:calc(env(safe-area-inset-bottom,0px) + 20px);display:flex;flex-wrap:wrap;gap:6px 14px;
+  max-width:calc(100% - 32px);background:rgba(0,0,0,.72);padding:8px 12px;font-size:15px;font-weight:600;pointer-events:none}
+.bm-legend span{display:flex;align-items:center;gap:6px}
+.bm-legend i{width:12px;height:12px;border-radius:50%;border:1.5px solid #000}
+.bm-legend i.tube{background:#fff;box-shadow:inset 0 0 0 2px #dc241f}
+.bm-legend i.home{background:#F2C76B;border-radius:2px;transform:rotate(45deg)}
+.bm-prompts{position:absolute;right:max(16px,calc(env(safe-area-inset-right,0px) + 3vw));top:calc(env(safe-area-inset-top,0px) + 20px);bottom:auto;align-items:flex-start;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;max-width:calc(100% - 240px)}
+@media (max-width:720px){.bm-prompts{top:auto;bottom:calc(env(safe-area-inset-bottom,0px) + 110px);max-width:calc(100% - 32px)}.bm-head b{font-size:22px}}
 @media (max-width:720px){.minimap{width:120px;height:120px}.roam-prompts{max-width:calc(100% - 160px)}.objective span{font-size:16px}}
 
 /* touch controls: a thumbstick on the left, Run and E on the right; only on touch screens */
@@ -328,6 +344,7 @@ body.in-story .ui,body.in-story .shade{display:none}
     <span class="prompt static k-only"><kbd>W A S D</kbd>Move</span>
     <span class="prompt static k-only"><kbd>Shift</kbd>Run</span>
     <span class="prompt static k-only"><kbd>Drag</kbd>Camera</span>
+    <button class="prompt" type="button" id="mapBtn"><kbd>M</kbd>Map</button>
     <button class="prompt" type="button" id="pauseBtn"><kbd>Esc</kbd>Pause</button>
   </div>
   <div class="touch" id="touch" aria-hidden="true">
@@ -343,6 +360,20 @@ body.in-story .ui,body.in-story .shade{display:none}
     <button class="prompt" type="button" id="scopePrev"><kbd>←</kbd>Previous</button>
     <button class="prompt" type="button" id="scopeNext"><kbd>→</kbd>Next</button>
     <button class="prompt" type="button" id="scopeBack"><kbd>E</kbd>Back</button>
+  </div>
+</div>
+<div class="bigmap" id="bigmap" role="dialog" aria-label="Map of London" hidden>
+  <canvas id="bigmapC"></canvas>
+  <div class="bm-head"><b>London</b><span>Drag to move · scroll or pinch to zoom</span></div>
+  <div class="bm-legend" aria-hidden="true">
+    <span><i style="background:#F2C76B"></i>Sights</span><span><i style="background:var(--accent)"></i>Government</span>
+    <span><i class="tube"></i>Underground</span><span><i style="background:#3d7a47;border-radius:2px"></i>Parks</span><span><i class="home"></i>Tommy's apartment</span>
+  </div>
+  <div class="prompts bm-prompts">
+    <button class="prompt" type="button" id="bmIn"><kbd>+</kbd>Zoom in</button>
+    <button class="prompt" type="button" id="bmOut"><kbd>−</kbd>Zoom out</button>
+    <button class="prompt" type="button" id="bmHere"><kbd>C</kbd>Find Tommy</button>
+    <button class="prompt" type="button" id="bmClose"><kbd>M</kbd>Close</button>
   </div>
 </div>
 <div class="alert" id="pause" role="dialog" aria-labelledby="pauseTitle" hidden>
@@ -3564,6 +3595,7 @@ function buildScene(){
       {name:'London Eye', at:new THREE.Vector3(bankX(860)+300,70,860), size:160, desc:"The 135-metre wheel on the South Bank, opened in 2000, looking straight across the river at Parliament."},
     ];
     LANDMARKS.push(...MORE_LM);
+    for (const lm of LANDMARKS) if (['Big Ben','Houses of Parliament','Buckingham Palace','London Eye','Trafalgar Square','Piccadilly Circus','10 Downing Street'].includes(lm.name)) lm.major = true;
     let state = 'off', stateT = 0, scopeI = 0, nearWhat = null;
     // Downing Street is closed: the officers at the gate turn Tommy away
     const GUARD_LINES = ['"Downing Street\'s closed to the public, sir. Keep moving."', '"No access without a pass. Step back from the gate, please."', '"I won\'t ask again, sir. Move along."'];
@@ -3894,6 +3926,8 @@ function buildScene(){
     return {
       scene: fsc,
       setTutorial(on){ tutorial = on; skyKey = ''; },
+      // for the full-screen map: the map data, the landmarks and where Tommy is in world coordinates
+      mapInfo(){ const st = level === 'street'; return {M:MAP, L:LANDMARKS, x:st ? P.x : P0.x + P.x, z:st ? P.z : P0.z + P.z, yaw:P.yaw, home:LOBBY}; },
       setQuality(q){
         const on = q !== 'Low', size = q === 'Ultra' ? 4096 : 2048; shadowR = q === 'Ultra' ? 110 : 75;
         sun.castShadow = on;
@@ -4412,7 +4446,7 @@ async function startFree(){
   await fadeTo(true); enterRoam(false);
 }
 async function leaveRoam(){
-  setPause(false); freeScope(null);
+  setPause(false); freeScope(null); openBigMap(false);
   await fadeTo(true);
   roam.active = false; input.keys.clear();
   $('roam').hidden = true; $('hint').hidden = true;
@@ -4458,6 +4492,13 @@ function mapBlip(g, lm, x, y){
   g.fillStyle = kind === 'gov' ? accentNow() : kind === 'eye' ? '#3fc1c9' : '#F2C76B';
   g.beginPath(); g.arc(x,y,9,0,7); g.fill(); g.stroke();
   g.fillStyle = kind === 'gov' ? '#fff' : '#111'; g.fillText(label, x, y+.5);
+}
+// off-map markers on the rim: only the nearest few big sights (or anything within a walk), and the nearest tube station
+function rimPick(list, px, pz){
+  const d = lm => Math.hypot(lm.at.x - px, lm.at.z - pz);
+  const sights = list.filter(lm => !lm.tube && (lm.major || d(lm) < 1300)).sort((a,b) => d(a) - d(b)).slice(0, 7);
+  const tube = list.filter(lm => lm.tube && d(lm) < 700).sort((a,b) => d(a) - d(b)).slice(0, 1);
+  return sights.concat(tube);
 }
 // markers pinned to the rim are spread out along it so they never stack on top of each other
 function rimSpread(items, R){
@@ -4505,7 +4546,7 @@ function drawMinimap(P, landmarks, P0){
   g.restore();
   mapRim(g, R);
   g.font = '700 10px Arial,sans-serif';
-  rimSpread(landmarks.filter(lm => lm.major || Math.hypot(lm.at.x - P0.x, lm.at.z - P0.z) < 1300).map(lm => ({lm, a:Math.atan2(lm.at.z - P0.z, lm.at.x - P0.x)})), R).forEach(b => mapBlip(g, b.lm, b.x, b.y));
+  rimSpread(rimPick(landmarks, P0.x, P0.z).map(lm => ({lm, a:Math.atan2(lm.at.z - P0.z, lm.at.x - P0.x)})), R).forEach(b => mapBlip(g, b.lm, b.x, b.y));
 }
 // E or a click on the hint: most things happen in the engine, the lift needs a fade
 async function roamInteract(){
@@ -4552,12 +4593,98 @@ function drawCityMap(P, M, landmarks){
   g.restore();
   mapRim(g, R);
   g.font = '700 10px Arial,sans-serif';
-  const rim = [];
-  landmarks.forEach(lm => { const x = X(lm.at.x), y = Z(lm.at.z), dx = x-R, dy = y-R;
-    // off the map, only the big sights and anything within a walk get a marker on the rim
-    if (Math.hypot(dx,dy) > R-30){ if (lm.major || Math.hypot(lm.at.x-P.x, lm.at.z-P.z) < 1300) rim.push({lm, a:Math.atan2(dy,dx)}); } else mapBlip(g, lm, x, y); });
-  rimSpread(rim, R).forEach(b => mapBlip(g, b.lm, b.x, b.y));
+  const off = [];
+  landmarks.forEach(lm => { const x = X(lm.at.x), y = Z(lm.at.z); if (Math.hypot(x-R, y-R) > R-30) off.push(lm); else mapBlip(g, lm, x, y); });
+  rimSpread(rimPick(off, P.x, P.z).map(lm => ({lm, a:Math.atan2(Z(lm.at.z)-R, X(lm.at.x)-R)})), R).forEach(b => mapBlip(g, b.lm, b.x, b.y));
 }
+/* ---- the full-screen map (M, the Map button, or a tap on the minimap): the whole of the game's London ---- */
+const WORLD = {x0:-2400, z0:-4350, x1:5900, z1:1900};
+const AREAS = [['WESTMINSTER',150,700],['SOHO',-330,-600],['MAYFAIR',-1250,-650],['ST JAMES\'S',-550,150],['BELGRAVIA',-1750,1150],['VICTORIA',-1150,1350],
+  ['THE STRAND',500,-300],['SOUTH BANK',900,600],['THE CITY',2700,-500],['HOLBORN',900,-1250],['BLOOMSBURY',100,-1700],['EUSTON',-250,-2700],
+  ['KING\'S CROSS',600,-2900],['CAMDEN',-500,-3800],['ISLINGTON',1700,-3300],['SHOREDITCH',3700,-1900],['SPITALFIELDS',3800,-1100],['WHITECHAPEL',4900,-800],
+  ['MARYLEBONE',-1400,-2000],['TOWER HILL',3900,200],['SOUTHWARK',2200,700]];
+const bigMap = {open:false, cx:0, cz:0, s:.3, dirty:true, info:null, ptrs:new Map(), pinch:0};
+function openBigMap(on){
+  if (on === bigMap.open) return;
+  bigMap.open = on; $('bigmap').hidden = !on; input.keys.clear();
+  if (on){ bigMap.info = scene3d.roamApi().mapInfo(); bigMap.cx = bigMap.info.x; bigMap.cz = bigMap.info.z; bigMap.s = .45; bigMap.dirty = true; requestAnimationFrame(drawBigMap); $('bmClose').focus({preventScroll:true}); }
+}
+function bigZoom(k, px, py){
+  const c = $('bigmapC'), W = c.clientWidth, H = c.clientHeight; if (px === undefined){ px = W/2; py = H/2; }
+  const wx = bigMap.cx + (px - W/2)/bigMap.s, wz = bigMap.cz + (py - H/2)/bigMap.s;
+  bigMap.s = Math.max(.06, Math.min(3, bigMap.s*k));
+  bigMap.cx = wx - (px - W/2)/bigMap.s; bigMap.cz = wz - (py - H/2)/bigMap.s; bigMap.dirty = true;
+}
+function drawBigMap(){
+  if (!bigMap.open) return;
+  requestAnimationFrame(drawBigMap);
+  if (!bigMap.dirty) return; bigMap.dirty = false;
+  const c = $('bigmapC'), dpr = Math.min(2, devicePixelRatio || 1), W = c.clientWidth, H = c.clientHeight;
+  if (c.width !== Math.round(W*dpr) || c.height !== Math.round(H*dpr)){ c.width = Math.round(W*dpr); c.height = Math.round(H*dpr); }
+  const g = c.getContext('2d'), {M, L, home} = bigMap.info, s = bigMap.s;
+  // keep the view on the map
+  bigMap.cx = Math.max(WORLD.x0, Math.min(WORLD.x1, bigMap.cx)); bigMap.cz = Math.max(WORLD.z0, Math.min(WORLD.z1, bigMap.cz));
+  const X = x => W/2 + (x - bigMap.cx)*s, Z = z => H/2 + (z - bigMap.cz)*s;
+  const vx0 = bigMap.cx - W/2/s, vx1 = bigMap.cx + W/2/s, vz0 = bigMap.cz - H/2/s, vz1 = bigMap.cz + H/2/s;
+  const inView = (x,z,r=0) => x > vx0-r && x < vx1+r && z > vz0-r && z < vz1+r;
+  g.setTransform(dpr,0,0,dpr,0,0);
+  g.lineJoin = 'round';
+  g.fillStyle = '#14161c'; g.fillRect(0,0,W,H);
+  g.fillStyle = '#262a33'; g.fillRect(X(WORLD.x0), Z(WORLD.z0), (WORLD.x1-WORLD.x0)*s, (WORLD.z1-WORLD.z0)*s);
+  // parks, squares and water
+  const poly = (pts, fill) => { g.fillStyle = fill; g.beginPath(); pts.forEach(([x,z],i) => i ? g.lineTo(X(x),Z(z)) : g.moveTo(X(x),Z(z))); g.closePath(); g.fill(); };
+  const rect = (o, fill) => { if (!inView(o.x,o.z,Math.max(o.w,o.d))) return; g.save(); g.translate(X(o.x),Z(o.z)); g.rotate(-o.rot); g.fillStyle = fill; g.fillRect(-o.w*s/2,-o.d*s/2,o.w*s,o.d*s); g.restore(); };
+  M.greens.forEach(o => o.poly ? poly(o.poly, '#3d7a47') : rect(o, '#3d7a47')); M.plazas.forEach(o => rect(o, o.col));
+  g.strokeStyle = '#6fb2e6'; g.lineWidth = Math.max(1, 2*Math.min(1, s*3));
+  poly(M.riverPoly, '#2f73b5'); g.stroke(); for (const w of M.waters){ poly(w, '#2f73b5'); g.stroke(); }
+  g.fillStyle = '#2f73b5'; for (const k of M.lakes){ g.beginPath(); g.ellipse(X(k.x), Z(k.z), k.rx*s, k.ry*s, k.rot, 0, 7); g.fill(); g.stroke(); }
+  // buildings once zoomed in, then the streets: side streets grey, main roads bright, The Mall red
+  if (s >= .3) for (const o of M.colsIn(vx0, vz0, vx1, vz1)){
+    if (o.length === 4){ const [a,b,cc,d] = o; if ((cc-a)*s < .8) continue; g.fillStyle = '#4a5060'; g.fillRect(X(a),Z(b),(cc-a)*s,(d-b)*s); }
+    else { const [cx,cz,hw,hd,co,sn] = o; g.fillStyle = '#4a5060'; g.save(); g.translate(X(cx),Z(cz)); g.rotate(-Math.atan2(sn,co)); g.fillRect(-hw*s,-hd*s,hw*2*s,hd*2*s); g.restore(); } }
+  const R = Math.hypot(vx1-vx0, vz1-vz0)/2, roads = s >= .2 ? M.roadsIn(bigMap.cx, bigMap.cz, R) : M.roads;
+  g.lineCap = 'round';
+  for (const pass of [0,1,2]) for (const r of roads){
+    const kind = r.mall ? 2 : r.w >= 14 ? 1 : 0; if (kind !== pass || (kind === 0 && s < .2)) continue;
+    if (!inView((r.x1+r.x2)/2, (r.z1+r.z2)/2, r.len/2)) continue;
+    g.strokeStyle = kind === 2 ? '#c4554a' : kind === 1 ? '#e8ebf2' : '#8a909e'; g.lineWidth = Math.max(kind ? 1.6 : 1, r.w*s);
+    g.beginPath(); g.moveTo(X(r.x1),Z(r.z1)); g.lineTo(X(r.x2),Z(r.z2)); g.stroke(); }
+  // district names, zoomed out
+  if (s < .7){ g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = `800 ${s < .2 ? 12 : 15}px Arial,sans-serif`;
+    for (const [n,x,z] of AREAS) if (inView(x,z)){ g.lineWidth = 4; g.strokeStyle = 'rgba(10,12,18,.85)'; g.strokeText(n, X(x), Z(z)); g.fillStyle = 'rgba(255,255,255,.55)'; g.fillText(n, X(x), Z(z)); } }
+  // landmarks: big sights always, the rest once zoomed in; tube roundels from street level up
+  g.font = '700 10px Arial,sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  const shown = L.filter(lm => inView(lm.at.x, lm.at.z, 20) && (lm.tube ? s >= .18 : lm.major || s >= .35));
+  shown.forEach(lm => mapBlip(g, lm, X(lm.at.x), Z(lm.at.z)));
+  g.font = '700 13px Arial,sans-serif'; g.textAlign = 'left';
+  for (const lm of shown) if (lm.tube ? s >= .9 : lm.major ? s >= .12 : s >= .6){
+    const x = X(lm.at.x) + 13, y = Z(lm.at.z); g.lineWidth = 4; g.strokeStyle = 'rgba(0,0,0,.85)'; g.strokeText(lm.name, x, y); g.fillStyle = '#fff'; g.fillText(lm.name, x, y); }
+  // Tommy's apartment, and Tommy
+  { const x = X(home.x), y = Z(home.z); g.save(); g.translate(x,y); g.rotate(Math.PI/4); g.fillStyle = '#F2C76B'; g.strokeStyle = '#000'; g.lineWidth = 2; g.fillRect(-6,-6,12,12); g.strokeRect(-6,-6,12,12); g.restore(); }
+  { const x = X(bigMap.info.x), y = Z(bigMap.info.z);
+    g.fillStyle = 'rgba(255,255,255,.18)'; g.beginPath(); g.arc(x,y,22,0,7); g.fill();
+    g.save(); g.translate(x,y); g.rotate(Math.PI - bigMap.info.yaw); g.shadowColor = 'rgba(0,0,0,.6)'; g.shadowBlur = 6; g.fillStyle = accentNow(); g.strokeStyle = '#fff'; g.lineWidth = 2.5;
+    g.beginPath(); g.moveTo(0,-13); g.lineTo(10,10); g.lineTo(0,5); g.lineTo(-10,10); g.closePath(); g.fill(); g.stroke(); g.restore(); }
+  // scale bar and a north arrow
+  { const m = [50,100,200,500,1000,2000].find(v => v*s > 70) || 2000, x = W - 30 - m*s, y = H - 30;
+    g.fillStyle = 'rgba(0,0,0,.7)'; g.fillRect(x - 10, y - 24, m*s + 20, 34); g.fillStyle = '#fff'; g.fillRect(x, y, m*s, 3); g.fillRect(x, y-5, 2, 8); g.fillRect(x + m*s - 2, y-5, 2, 8);
+    g.font = '700 12px Arial,sans-serif'; g.textAlign = 'center'; g.fillText(m >= 1000 ? m/1000 + ' km' : m + ' m', x + m*s/2, y - 11); }
+}
+{ const c = $('bigmapC');
+  c.addEventListener('pointerdown', e => { c.setPointerCapture(e.pointerId); bigMap.ptrs.set(e.pointerId, {x:e.clientX, y:e.clientY}); bigMap.pinch = 0; });
+  c.addEventListener('pointermove', e => { const p = bigMap.ptrs.get(e.pointerId); if (!p) return;
+    if (bigMap.ptrs.size === 2){ const [a,b] = [...bigMap.ptrs.values()]; p.x = e.clientX; p.y = e.clientY;
+      const d = Math.hypot(a.x-b.x, a.y-b.y); if (bigMap.pinch) bigZoom(d/bigMap.pinch, (a.x+b.x)/2, (a.y+b.y)/2); bigMap.pinch = d; return; }
+    bigMap.cx -= (e.clientX - p.x)/bigMap.s; bigMap.cz -= (e.clientY - p.y)/bigMap.s; p.x = e.clientX; p.y = e.clientY; bigMap.dirty = true; });
+  const up = e => { bigMap.ptrs.delete(e.pointerId); bigMap.pinch = 0; };
+  c.addEventListener('pointerup', up); c.addEventListener('pointercancel', up);
+  c.addEventListener('wheel', e => { e.preventDefault(); bigZoom(Math.exp(-e.deltaY*.0015), e.clientX, e.clientY); }, {passive:false});
+  addEventListener('resize', () => { bigMap.dirty = true; });
+  $('bmIn').addEventListener('click', () => bigZoom(1.5)); $('bmOut').addEventListener('click', () => bigZoom(1/1.5));
+  $('bmHere').addEventListener('click', () => { bigMap.cx = bigMap.info.x; bigMap.cz = bigMap.info.z; bigMap.dirty = true; });
+  $('bmClose').addEventListener('click', () => openBigMap(false));
+  $('mapBtn').addEventListener('click', () => { if (roam.active && !roam.paused && !scene3d.roamApi().busy()) openBigMap(true); });
+  $('minimap').addEventListener('click', () => { if (roam.active && !roam.paused && !scene3d.roamApi().busy()) openBigMap(true); }); }
 $('hint').addEventListener('click', roamInteract);
 $('pauseBtn').addEventListener('click', () => setPause(true));
 $('resumeBtn').addEventListener('click', () => setPause(false));
@@ -4589,6 +4716,15 @@ $('cine').addEventListener('click', e => { if (e.target.closest('#skipBtn')) sto
 addEventListener('keydown', e => {
   if (roam.active){
     const k = e.key.toLowerCase(), api = scene3d.roamApi();
+    if (bigMap.open){
+      e.preventDefault();
+      if (k === 'escape' || k === 'm') openBigMap(false);
+      else if (k === '+' || k === '=') bigZoom(1.5); else if (k === '-' || k === '_') bigZoom(1/1.5);
+      else if (k === 'c'){ bigMap.cx = bigMap.info.x; bigMap.cz = bigMap.info.z; bigMap.dirty = true; }
+      else { const step = 120/bigMap.s, d = {arrowleft:[-1,0], a:[-1,0], arrowright:[1,0], d:[1,0], arrowup:[0,-1], w:[0,-1], arrowdown:[0,1], s:[0,1]}[k];
+        if (d){ bigMap.cx += d[0]*step; bigMap.cz += d[1]*step; bigMap.dirty = true; } }
+      return;
+    }
     if (roam.paused){
       if (k === 'escape'){ e.preventDefault(); setPause(false); }
       else if (k === 'm'){ e.preventDefault(); leaveRoam(); }
@@ -4596,6 +4732,7 @@ addEventListener('keydown', e => {
     }
     if (k === 'escape'){ e.preventDefault(); if (api.busy()) api.leave(); else setPause(true); return; }
     if (k === 'e' || k === 'enter'){ e.preventDefault(); roamInteract(); return; }
+    if (k === 'm' && !api.busy()){ e.preventDefault(); openBigMap(true); return; }
     if (api.busy() && (k === 'arrowleft' || k === 'arrowright')){ e.preventDefault(); api.cycle(k === 'arrowleft' ? -1 : 1); return; }
     if (['w','a','s','d','shift','arrowup','arrowdown','arrowleft','arrowright',' '].includes(k)){ e.preventDefault(); input.keys.add(k); }
     return;
