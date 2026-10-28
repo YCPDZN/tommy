@@ -69,7 +69,7 @@ A game starring Tommy (no last name), set in Westminster, London.
       - After dark (when `lights` > .3), a pool of rockets bursts into coloured sparks over the river, to the right of the menu panel.
       - The UI accent turns fiery red and gold, firework bursts play on the banner, and the HUD shows a firework icon.
     - All four seasons keep the real time of day and greet the player once in the feed toast (`SEASONS`).
-  - **Tommy's alignment is chaotic neutral** (user's rule). The menu logo shows it as a black "Alignment · Chaotic Neutral" stamp beside the London plate (`.logo .align`), or under it on phones.
+  - **Tommy's alignment is chaotic neutral** (user's rule). The menu HUD shows it as a black "Alignment · Chaotic Neutral" stamp under the time, date and weather (`.hud .align`).
   - The UI accent is **purple** (`--accent` #A35CF0 / `--accent-deep` #5A27A8, at the user's request). It's used across the menu, subtitles, telescope panel, RUN button and minimap arrow. Tommy's shirt stays blue.
 - **Story Mode** (just "Story Mode", no chapter numbers) opens with the cutscene "The Address". It's in the same file. **The PM's cutscene is always at night** (its own fixed scenes, exposure 1.15), whatever the real sky (user's rule). Prime Minister **Jordan Andreas** (Conservative Party; fictional) speaks outside 10 Downing Street, with press and a police officer.
   - Tommy is **not** at the speech. The cutscene opens in Tommy's flat, where the speech plays live on his TV ("LDN News 24").
